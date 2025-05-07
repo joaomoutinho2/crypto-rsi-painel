@@ -1,9 +1,17 @@
 import ccxt
 import pandas as pd
 from ta.momentum import RSIIndicator
-from config import TIMEFRAME
+from config import TIMEFRAME, EXCHANGE
 
-exchange = ccxt.binance()
+# Criar ligação à exchange dinamicamente
+def get_exchange():
+    try:
+        exchange_class = getattr(ccxt, EXCHANGE)
+        return exchange_class()
+    except AttributeError:
+        raise Exception(f"Exchange '{EXCHANGE}' não é suportada pelo ccxt.")
+
+exchange = get_exchange()
 
 def fetch_ohlcv(par, timeframe='1h'):
     candles = exchange.fetch_ohlcv(par, timeframe=timeframe, limit=100)
