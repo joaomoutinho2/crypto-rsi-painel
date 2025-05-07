@@ -37,9 +37,9 @@ except AttributeError:
     st.stop()
 
 # ======================
-# 🧠 Histórico de estado para anti-spam Telegram
+# 🧠 Histórico de estado para evitar spam
 # ======================
-estado_alertas = {}  # Ex: { "BTC/USDT": "ENTRADA" }
+estado_alertas = {}
 
 # ======================
 # 📊 Visualização de dados
@@ -73,14 +73,22 @@ for moeda in MOEDAS:
                 st.info("ℹ️ NEUTRO")
                 alerta = "NEUTRO"
 
-        # 🚨 Enviar alerta para Telegram se for diferente
+        # 🚨 Enviar alerta se mudou o estado
         alerta_anterior = estado_alertas.get(moeda)
-        if alerta != alerta_anterior and alerta in ["ENTRADA", "SAÍDA"]:
+        if alerta != alerta_anterior:
+            if alerta in ["ENTRADA", "SAÍDA"]:
+                emoji = "🔔"
+                sinal = alerta
+            else:
+                emoji = "ℹ️"
+                sinal = "RETORNO À ZONA NEUTRA"
+
             mensagem = (
-                f"📈 Alerta RSI - {moeda}\n"
+                f"📈 Alerta RSI - {moeda} ({exchange_nome})\n"
+                f"⏱️ Timeframe: {timeframe}\n"
                 f"💰 Preço: {preco_atual:.2f} USDT\n"
                 f"📊 RSI: {rsi_atual:.2f}\n"
-                f"⚠️ Sinal: {alerta}"
+                f"{emoji} Sinal: {sinal}"
             )
             enviar_telegram(mensagem)
             estado_alertas[moeda] = alerta
@@ -98,7 +106,7 @@ for moeda in MOEDAS:
         ax1.set_title(f"{moeda} - RSI & Preço")
         st.pyplot(fig)
 
-        # ✅ Botão para guardar gráfico
+        # 💾 Botão para guardar gráfico
         buf = BytesIO()
         fig.savefig(buf, format="png")
         st.download_button(
@@ -124,7 +132,7 @@ try:
 
     st.dataframe(df_log.tail(20), use_container_width=True)
 
-    # ✅ Botão para exportar histórico
+    # 📤 Exportar CSV
     csv = df_log.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📤 Exportar histórico filtrado para CSV",
