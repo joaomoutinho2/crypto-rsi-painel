@@ -1,13 +1,19 @@
 import time
 import ccxt
 import pandas as pd
+import requests
+import os
 from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.volatility import BollingerBands
-from config import MOEDAS, TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-import requests
 
-# Envio para Telegram
+# ⚙️ Configuração (usa variáveis de ambiente no Render)
+MOEDAS = ['BTC/USDT', 'ETH/USDT']
+TIMEFRAME = '1h'
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+
+# 📩 Enviar mensagem para Telegram
 def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
@@ -18,15 +24,17 @@ def enviar_telegram(mensagem):
     except Exception as e:
         print("❌ Exceção Telegram:", e)
 
-# Ligação à exchange (podes mudar para binance, coinbase, etc.)
+# 🌐 Ligação à exchange
 exchange = ccxt.kucoin()
 estado_alertas = {}
 
+# 📊 Lógica de análise para cada moeda
 def analisar_moeda(moeda):
     try:
         candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
         df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
+        # Indicadores técnicos
         df['RSI'] = RSIIndicator(close=df['close'], window=14).rsi()
         df['SMA'] = SMAIndicator(close=df['close'], window=14).sma_indicator()
         df['EMA'] = EMAIndicator(close=df['close'], window=14).ema_indicator()
@@ -52,14 +60,14 @@ def analisar_moeda(moeda):
         bb_sup = df['BB_upper'].iloc[-1]
         bb_inf = df['BB_lower'].iloc[-1]
 
-        # Determinar sinal principal
+        # Sinal principal
         alerta = "NEUTRO"
         if rsi < 30:
             alerta = "ENTRADA"
         elif rsi > 70:
             alerta = "SAÍDA"
 
-        # Verificar se deve enviar novo alerta
+        # Enviar alerta se mudar de estado
         if moeda not in estado_alertas or alerta != estado_alertas[moeda]:
             confirmacoes = []
             if alerta == "ENTRADA":
@@ -98,9 +106,25 @@ def analisar_moeda(moeda):
         print(f"❌ Erro ao processar {moeda}: {e}")
 
 # 🔁 Loop principal
-print("✅ Bot RSI iniciado...")
-while True:
-    for moeda in MOEDAS:
-        analisar_moeda(moeda)
-    print("⏳ A aguardar 5 minutos...")
-    time.sleep(300)
+def loop_bot():
+    print("✅ Bot RSI iniciado.")
+    while True:
+        for moeda in MOEDAS:
+            analisar_moeda(moeda)
+        print("⏳ A aguardar 5 minutos...")
+        time.sleep(300)
+
+# 🌐 Microservidor Flask para manter ativo no Render
+from flask import Flask
+import threading
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ Bot RSI ativo no Render!"
+
+# ▶️ Executar o bot + servidor Flask em paralelo
+if __name__ == "__main__":
+    threading.Thread(target=loop_bot).start()
+    app.run(host='0.0.0.0', port=10000)
