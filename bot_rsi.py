@@ -6,6 +6,7 @@ from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.volatility import BollingerBands
 from config import MOEDAS, TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 import requests
+from datetime import datetime, timedelta
 
 # Envio para Telegram
 def enviar_telegram(mensagem):
@@ -18,9 +19,13 @@ def enviar_telegram(mensagem):
     except Exception as e:
         print("❌ Exceção Telegram:", e)
 
-# Ligação à exchange (podes mudar para binance, coinbase, etc.)
+# Ligação à exchange
 exchange = ccxt.kucoin()
 estado_alertas = {}
+ultimo_resumo = {}
+
+# Frequência dos resumos por moeda
+INTERVALO_RESUMO_MINUTOS = 60
 
 def analisar_moeda(moeda):
     try:
@@ -52,55 +57,62 @@ def analisar_moeda(moeda):
         bb_sup = df['BB_upper'].iloc[-1]
         bb_inf = df['BB_lower'].iloc[-1]
 
-        # Determinar sinal principal
+        # Sinal principal
         alerta = "NEUTRO"
         if rsi < 30:
             alerta = "ENTRADA"
         elif rsi > 70:
             alerta = "SAÍDA"
 
-        # Verificar se deve enviar novo alerta
+        confirmacoes = []
+        if alerta == "ENTRADA":
+            if preco > sma: confirmacoes.append("✅ preço > SMA")
+            if preco > ema: confirmacoes.append("✅ preço > EMA")
+            if vol > vol_med: confirmacoes.append("✅ volume alto")
+            if macd_val > macd_sig: confirmacoes.append("✅ MACD p/ cima")
+            if preco < bb_inf: confirmacoes.append("✅ abaixo da Bollinger")
+        elif alerta == "SAÍDA":
+            if preco < sma: confirmacoes.append("✅ preço < SMA")
+            if preco < ema: confirmacoes.append("✅ preço < EMA")
+            if vol > vol_med: confirmacoes.append("✅ volume alto")
+            if macd_val < macd_sig: confirmacoes.append("✅ MACD p/ baixo")
+            if preco > bb_sup: confirmacoes.append("✅ acima da Bollinger")
+        else:
+            confirmacoes.append("ℹ️ RSI neutro")
+
+        analise = " | ".join(confirmacoes)
+
+        mensagem = (
+            f"📈 RSI - {moeda} ({TIMEFRAME})\n"
+            f"💰 Preço: {preco:.2f} USDT\n"
+            f"📊 RSI: {rsi:.2f} | SMA: {sma:.2f} | EMA: {ema:.2f}\n"
+            f"📉 Volume: {vol:.2f} (média: {vol_med:.2f})\n"
+            f"📊 MACD: {macd_val:.2f} / sinal: {macd_sig:.2f}\n"
+            f"📉 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]\n"
+            f"⚠️ Estado: {alerta}\n"
+            f"{analise}"
+        )
+
+        # Enviar se mudar o estado
         if moeda not in estado_alertas or alerta != estado_alertas[moeda]:
-            confirmacoes = []
-            if alerta == "ENTRADA":
-                if preco > sma: confirmacoes.append("✅ preço > SMA")
-                if preco > ema: confirmacoes.append("✅ preço > EMA")
-                if vol > vol_med: confirmacoes.append("✅ volume alto")
-                if macd_val > macd_sig: confirmacoes.append("✅ MACD p/ cima")
-                if preco < bb_inf: confirmacoes.append("✅ abaixo da Bollinger")
-            elif alerta == "SAÍDA":
-                if preco < sma: confirmacoes.append("✅ preço < SMA")
-                if preco < ema: confirmacoes.append("✅ preço < EMA")
-                if vol > vol_med: confirmacoes.append("✅ volume alto")
-                if macd_val < macd_sig: confirmacoes.append("✅ MACD p/ baixo")
-                if preco > bb_sup: confirmacoes.append("✅ acima da Bollinger")
-            else:
-                confirmacoes.append("ℹ️ RSI neutro")
-
-            analise = " | ".join(confirmacoes)
-
-            mensagem = (
-                f"📈 Alerta RSI - {moeda}\n"
-                f"⏱️ Timeframe: {TIMEFRAME}\n"
-                f"💰 Preço: {preco:.2f} USDT\n"
-                f"📊 RSI: {rsi:.2f} | SMA: {sma:.2f} | EMA: {ema:.2f}\n"
-                f"📉 Volume: {vol:.2f} (média: {vol_med:.2f})\n"
-                f"📊 MACD: {macd_val:.2f} / sinal: {macd_sig:.2f}\n"
-                f"📉 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]\n"
-                f"⚠️ Sinal: {alerta}\n"
-                f"{analise}"
-            )
-
-            enviar_telegram(mensagem)
+            enviar_telegram("🔔 *SINAL MUDOU*\n" + mensagem)
             estado_alertas[moeda] = alerta
+
+        # Enviar resumo horário
+        agora = datetime.now()
+        if (
+            moeda not in ultimo_resumo
+            or agora - ultimo_resumo[moeda] > timedelta(minutes=INTERVALO_RESUMO_MINUTOS)
+        ):
+            enviar_telegram("🕒 *Atualização horária*\n" + mensagem)
+            ultimo_resumo[moeda] = agora
 
     except Exception as e:
         print(f"❌ Erro ao processar {moeda}: {e}")
 
 # 🔁 Loop principal
-print("✅ Bot RSI iniciado...")
+print("✅ Bot RSI com alertas iniciado...")
 while True:
     for moeda in MOEDAS:
         analisar_moeda(moeda)
-    print("⏳ A aguardar 5 minutos...")
-    time.sleep(300)
+    time.sleep(300)  # Verifica a cada 5 minutos
