@@ -6,6 +6,7 @@ from ta.momentum import RSIIndicator
 from config import MOEDAS, LOG_PATH
 from io import BytesIO
 from streamlit_autorefresh import st_autorefresh
+from telegram_alert import enviar_telegram
 
 # ⚙️ Configuração inicial
 st.set_page_config(page_title="Monitor RSI Cripto", layout="wide")
@@ -22,7 +23,7 @@ exchanges_disponiveis = ['kucoin', 'coinbase', 'kraken']
 exchange_nome = st.sidebar.selectbox("🌐 Exchange", exchanges_disponiveis, index=0)
 filtro_alerta = st.sidebar.radio("⚠️ Tipo de alerta a mostrar", options=["Todos", "ENTRADA", "SAÍDA", "NEUTRO"])
 
-# 🔁 Auto-refresh nativo (funciona em cloud)
+# 🔁 Auto-refresh
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
 
 # ======================
@@ -34,6 +35,11 @@ try:
 except AttributeError:
     st.error(f"Exchange '{exchange_nome}' não é suportada pelo ccxt.")
     st.stop()
+
+# ======================
+# 🧠 Histórico de estado para anti-spam Telegram
+# ======================
+estado_alertas = {}  # Ex: { "BTC/USDT": "ENTRADA" }
 
 # ======================
 # 📊 Visualização de dados
@@ -59,10 +65,25 @@ for moeda in MOEDAS:
         with col3:
             if rsi_atual < 30:
                 st.success("🔔 ENTRADA")
+                alerta = "ENTRADA"
             elif rsi_atual > 70:
                 st.warning("🔔 SAÍDA")
+                alerta = "SAÍDA"
             else:
                 st.info("ℹ️ NEUTRO")
+                alerta = "NEUTRO"
+
+        # 🚨 Enviar alerta para Telegram se for diferente
+        alerta_anterior = estado_alertas.get(moeda)
+        if alerta != alerta_anterior and alerta in ["ENTRADA", "SAÍDA"]:
+            mensagem = (
+                f"📈 Alerta RSI - {moeda}\n"
+                f"💰 Preço: {preco_atual:.2f} USDT\n"
+                f"📊 RSI: {rsi_atual:.2f}\n"
+                f"⚠️ Sinal: {alerta}"
+            )
+            enviar_telegram(mensagem)
+            estado_alertas[moeda] = alerta
 
         # === Gráfico RSI + Preço ===
         st.markdown("#### Gráfico RSI e Preço")
