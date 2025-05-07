@@ -1,14 +1,17 @@
 import time
 import ccxt
 import pandas as pd
+import requests
+import os
+from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.volatility import BollingerBands
-from config import MOEDAS, TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-import requests
-from datetime import datetime, timedelta
 
-# Envio para Telegram
+# ⚙️ Configs (Render usa variáveis de ambiente)
+from config import MOEDAS, TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+
+# 📤 Telegram
 def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
@@ -19,12 +22,10 @@ def enviar_telegram(mensagem):
     except Exception as e:
         print("❌ Exceção Telegram:", e)
 
-# Ligação à exchange
+# 📊 Ligação à exchange
 exchange = ccxt.kucoin()
 estado_alertas = {}
 ultimo_resumo = {}
-
-# Frequência dos resumos por moeda
 INTERVALO_RESUMO_MINUTOS = 60
 
 def analisar_moeda(moeda):
@@ -57,7 +58,6 @@ def analisar_moeda(moeda):
         bb_sup = df['BB_upper'].iloc[-1]
         bb_inf = df['BB_lower'].iloc[-1]
 
-        # Sinal principal
         alerta = "NEUTRO"
         if rsi < 30:
             alerta = "ENTRADA"
@@ -93,12 +93,10 @@ def analisar_moeda(moeda):
             f"{analise}"
         )
 
-        # Enviar se mudar o estado
         if moeda not in estado_alertas or alerta != estado_alertas[moeda]:
             enviar_telegram("🔔 *SINAL MUDOU*\n" + mensagem)
             estado_alertas[moeda] = alerta
 
-        # Enviar resumo horário
         agora = datetime.now()
         if (
             moeda not in ultimo_resumo
@@ -111,8 +109,24 @@ def analisar_moeda(moeda):
         print(f"❌ Erro ao processar {moeda}: {e}")
 
 # 🔁 Loop principal
-print("✅ Bot RSI com alertas iniciado...")
-while True:
-    for moeda in MOEDAS:
-        analisar_moeda(moeda)
-    time.sleep(300)  # Verifica a cada 5 minutos
+def iniciar_bot():
+    print("✅ Bot RSI com alertas iniciado...")
+    while True:
+        for moeda in MOEDAS:
+            analisar_moeda(moeda)
+        time.sleep(300)
+
+# 🌐 Servidor Flask para manter o Render ativo
+from flask import Flask
+import threading
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ Bot RSI ativo no Render e pronto a enviar alertas."
+
+# ▶️ Iniciar o bot + o Flask
+if __name__ == "__main__":
+    threading.Thread(target=iniciar_bot).start()
+    app.run(host="0.0.0.0", port=10000)
