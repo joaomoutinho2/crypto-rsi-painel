@@ -4,3 +4,4 @@ ta
 requests
 streamlit
 matplotlib
+streamlit-autorefresh
