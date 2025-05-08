@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import ccxt
 import json
+import os
 from datetime import datetime
 from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator, EMAIndicator, MACD
@@ -11,12 +12,10 @@ from config import MOEDAS, LOG_PATH
 from io import BytesIO
 from streamlit_autorefresh import st_autorefresh
 from telegram_alert import enviar_telegram
-import os
 
-# Caminho do ficheiro de posições
+# 📁 Base de dados local
 FICHEIRO_POSICOES = "posicoes.json"
 
-# Funções para lidar com posições
 def carregar_posicoes():
     if not os.path.exists(FICHEIRO_POSICOES):
         return []
@@ -27,25 +26,24 @@ def guardar_posicoes(posicoes):
     with open(FICHEIRO_POSICOES, "w") as f:
         json.dump(posicoes, f, indent=2)
 
-# Configuração da página
-st.set_page_config(page_title="Painel RSI Completo", layout="wide")
-st.title("📈 Painel RSI com Indicadores Técnicos Avançados")
+# ⚙️ Configuração geral
+st.set_page_config(page_title="Painel RSI", layout="wide")
+st.title("📈 Painel RSI com Indicadores Técnicos")
 
-# Sidebar - Filtros e Secções
+# Sidebar: filtros + navegação
 st.sidebar.header("⚙️ Filtros")
 tempo_refresco = st.sidebar.slider("⏳ Atualizar a cada (segundos)", 10, 300, 60, step=10)
 timeframe = st.sidebar.selectbox("🕒 Intervalo de tempo", ["15m", "1h", "4h"], index=1)
 exchanges_disponiveis = ['kucoin', 'coinbase', 'kraken']
 exchange_nome = st.sidebar.selectbox("🌐 Exchange", exchanges_disponiveis, index=0)
 filtro_alerta = st.sidebar.radio("⚠️ Tipo de alerta a mostrar", ["Todos", "ENTRADA", "SAÍDA", "NEUTRO"])
-
 st.sidebar.markdown("---")
 secao = st.sidebar.radio("📂 Secções", ["📊 Painel RSI", "💼 Minhas Posições"])
 
-# Autorefresh
+# Atualização automática
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
 
-# Secção: Painel RSI
+# === SECÇÃO 1: Painel RSI ===
 if secao == "📊 Painel RSI":
     exchange = getattr(ccxt, exchange_nome)()
     estado_alertas = {}
@@ -80,16 +78,12 @@ if secao == "📊 Painel RSI":
             bb_inf = df['BB_lower'].iloc[-1]
 
             st.subheader(f"📊 {moeda} ({exchange_nome})")
-
             col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("💰 Preço", f"{preco_atual:.2f} USDT")
-            with col2:
-                st.metric("📈 RSI", f"{rsi_atual:.2f}")
-            with col3:
-                st.metric("📊 SMA", f"{sma_atual:.2f}")
+            col1.metric("💰 Preço", f"{preco_atual:.2f} USDT")
+            col2.metric("📈 RSI", f"{rsi_atual:.2f}")
+            col3.metric("📊 SMA", f"{sma_atual:.2f}")
 
-            # Sinal principal
+            # Determinar sinal principal
             alerta = "NEUTRO"
             emoji = "ℹ️"
             if rsi_atual < 30:
@@ -107,21 +101,21 @@ if secao == "📊 Painel RSI":
                 if preco_atual > sma_atual: confirmacao.append("✅ preço > SMA")
                 if preco_atual > ema_atual: confirmacao.append("✅ preço > EMA")
                 if vol_atual > vol_medio: confirmacao.append("✅ volume alto")
-                if macd_val > macd_sig: confirmacao.append("✅ MACD cruzado p/ cima")
-                if preco_atual < bb_inf: confirmacao.append("✅ fora da banda inferior")
+                if macd_val > macd_sig: confirmacao.append("✅ MACD p/ cima")
+                if preco_atual < bb_inf: confirmacao.append("✅ fora da Bollinger inferior")
             elif alerta == "SAÍDA":
                 if preco_atual < sma_atual: confirmacao.append("✅ preço < SMA")
                 if preco_atual < ema_atual: confirmacao.append("✅ preço < EMA")
                 if vol_atual > vol_medio: confirmacao.append("✅ volume alto")
-                if macd_val < macd_sig: confirmacao.append("✅ MACD cruzado p/ baixo")
-                if preco_atual > bb_sup: confirmacao.append("✅ fora da banda superior")
+                if macd_val < macd_sig: confirmacao.append("✅ MACD p/ baixo")
+                if preco_atual > bb_sup: confirmacao.append("✅ fora da Bollinger superior")
             else:
-                confirmacao.append("ℹ️ RSI em zona neutra")
+                confirmacao.append("ℹ️ RSI neutro")
 
             analise_texto = " | ".join(confirmacao)
             st.markdown(f"**📋 Análise:** {analise_texto}")
 
-            # Telegram
+            # Telegram (apenas se sinal mudar)
             alerta_anterior = estado_alertas.get(moeda)
             if alerta != alerta_anterior:
                 mensagem = (
@@ -165,7 +159,7 @@ if secao == "📊 Painel RSI":
         except Exception as e:
             st.error(f"Erro ao carregar {moeda}: {e}")
 
-    # Histórico
+    # Histórico (se existir)
     st.markdown("### 📜 Histórico de Alertas")
     try:
         df_log = pd.read_csv(LOG_PATH)
@@ -177,7 +171,7 @@ if secao == "📊 Painel RSI":
     except:
         st.warning("Histórico não disponível.")
 
-# Secção: Minhas Posições
+# === SECÇÃO 2: Minhas Posições ===
 elif secao == "💼 Minhas Posições":
     st.title("💼 Registo de Posições Pessoais")
 
