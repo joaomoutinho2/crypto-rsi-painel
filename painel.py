@@ -323,6 +323,7 @@ def guardar_venda(registro):
     historico.append(registro)
     with open(FICHEIRO_HISTORICO, "w") as f:
         json.dump(historico, f, indent=2)
+
 # ============================
 # 📜 HISTÓRICO DE VENDAS
 # ============================
