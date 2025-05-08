@@ -1,4 +1,3 @@
-
 import time
 import ccxt
 import pandas as pd
@@ -12,26 +11,44 @@ from ta.volatility import BollingerBands
 from flask import Flask
 import threading
 from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+import schedule
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.info("Bot iniciado.")
 
 FICHEIRO_POSICOES = "posicoes.json"
 
+QUEDA_LIMITE = 0.95
+OBJETIVO_PADRAO = 10
+
 # 📤 Enviar alerta para o Telegram
 def enviar_telegram(mensagem):
+    if len(mensagem) > 4096:  # Limite de caracteres do Telegram
+        mensagem = mensagem[:4093] + "..."
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
     try:
         response = requests.post(url, data=data)
         if response.status_code != 200:
-            print("❌ Erro Telegram:", response.text)
+            logging.error(f"❌ Erro Telegram: {response.text}")
     except Exception as e:
-        print("❌ Exceção Telegram:", e)
+        logging.error(f"❌ Exceção Telegram: {e}")
 
 # 📁 Carregar posições registadas
 def carregar_posicoes():
     if not os.path.exists(FICHEIRO_POSICOES):
         return []
     with open(FICHEIRO_POSICOES, "r") as f:
-        return json.load(f)
+        try:
+            posicoes = json.load(f)
+            # Validação básica
+            if not isinstance(posicoes, list):
+                raise ValueError("Formato inválido no arquivo de posições.")
+            return posicoes
+        except Exception as e:
+            print(f"❌ Erro ao carregar posições: {e}")
+            return []
 
 # 🔍 Análise de oportunidades
 def analisar_oportunidades(exchange, moedas, limite=5):
@@ -64,7 +81,8 @@ def analisar_oportunidades(exchange, moedas, limite=5):
 
             if sinais >= 3:
                 oportunidades.append((moeda, preco, rsi, sinais))
-        except:
+        except Exception as e:
+            print(f"❌ Erro: {e}")
             continue
 
     oportunidades.sort(key=lambda x: -x[3])
@@ -78,13 +96,13 @@ def acompanhar_posicoes(exchange, posicoes):
             preco_atual = ticker["last"]
             preco_entrada = pos["preco_entrada"]
             investido = pos["montante"]
-            objetivo = pos.get("objetivo", 10)
+            objetivo = pos.get("objetivo", OBJETIVO_PADRAO)
 
             valor_atual = preco_atual * (investido / preco_entrada)
             lucro = valor_atual - investido
             percent = (lucro / investido) * 100
 
-            if preco_atual < preco_entrada * 0.95:
+            if preco_atual < preco_entrada * QUEDA_LIMITE:
                 enviar_telegram(
     f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?\n"
 Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
@@ -92,13 +110,18 @@ Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
                 enviar_telegram(
     f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!\n"
 Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
-        except:
+        except Exception as e:
+            print(f"❌ Erro: {e}")
             continue
 
 # 🔁 Ciclo principal
 def iniciar_bot():
     exchange = ccxt.kucoin()
-    exchange.load_markets()
+    try:
+        exchange.load_markets()
+    except Exception as e:
+        logging.error(f"❌ Erro ao carregar mercados: {e}")
+        return
     moedas = [s for s in exchange.symbols if "/USDT" in s and "UP/" not in s and "DOWN/" not in s]
 
     while True:
@@ -114,6 +137,16 @@ def iniciar_bot():
 
         print("⏱️ A aguardar 1 hora...")
         time.sleep(3600)
+
+def executar_bot():
+    # Código do bot
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Executando ciclo do bot...")
+
+schedule.every(1).hours.do(executar_bot)
+
+while True:
+    schedule.run_pending()
+    time.sleep(1)
 
 # 🌐 Servidor Flask (Render)
 app = Flask(__name__)
