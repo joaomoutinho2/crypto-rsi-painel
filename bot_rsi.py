@@ -15,32 +15,32 @@ from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 FICHEIRO_POSICOES = "posicoes.json"
 QUEDA_LIMITE = 0.95
 OBJETIVO_PADRAO = 10
-
 estado_alertas = {}
 
 def enviar_telegram(mensagem):
-    if len(mensagem) > 4096:
-        mensagem = mensagem[:4093] + "..."
+    print("📤 Enviar para Telegram:")
+    print(mensagem)
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
     try:
         response = requests.post(url, data=data)
+        print("🔁 Código:", response.status_code)
+        print("📨 Resposta:", response.text)
         if response.status_code != 200:
-            print(f"Erro ao enviar mensagem: {response.text}")
+            print("❌ Erro ao enviar para Telegram.")
     except Exception as e:
-        print("Erro Telegram:", e)
+        print("❌ Exceção ao enviar:", e)
 
 def carregar_posicoes():
     if not os.path.exists(FICHEIRO_POSICOES):
         return []
-    with open(FICHEIRO_POSICOES, "r") as f:
-        try:
+    try:
+        with open(FICHEIRO_POSICOES, "r") as f:
             return json.load(f)
-        except:
-            return []
+    except:
+        return []
 
-def analisar_oportunidades(exchange, moedas, limite=5):
-    oportunidades = []
+def analisar_oportunidades(exchange, moedas):
     for moeda in moedas:
         try:
             candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
@@ -70,22 +70,21 @@ def analisar_oportunidades(exchange, moedas, limite=5):
             if preco > ema: sinais += 1
             if macd > macd_sig: sinais += 1
 
-            alerta_hash = f"{moeda}-{round(rsi, 1)}-{sinais}"
-            if sinais >= 3 and estado_alertas.get(moeda) != alerta_hash:
-                estado_alertas[moeda] = alerta_hash
+            hash_alerta = f"{moeda}-{round(rsi, 1)}-{sinais}"
+            if sinais >= 3 and estado_alertas.get(moeda) != hash_alerta:
+                estado_alertas[moeda] = hash_alerta
                 mensagem = (
-                    f"🚨 Oportunidade: {moeda}"
-                    f"💰 Preço: {preco:.2f} USDT"
-                    f"📊 RSI: {rsi:.2f} | EMA: {ema:.2f}"
-                    f"📈 MACD: {macd:.2f} / Sinal: {macd_sig:.2f}"
-                    f"📉 Volume: {vol:.2f} (média: {vol_med:.2f})"
-                    f"🎯 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]"
+                    f"🚨 Oportunidade: {moeda}\n"
+                    f"💰 Preço: {preco:.2f} USDT\n"
+                    f"📊 RSI: {rsi:.2f} | EMA: {ema:.2f}\n"
+                    f"📈 MACD: {macd:.2f} / Sinal: {macd_sig:.2f}\n"
+                    f"📉 Volume: {vol:.2f} (média: {vol_med:.2f})\n"
+                    f"🎯 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]\n"
                     f"⚙️ Força: {sinais}/4"
                 )
                 enviar_telegram(mensagem)
-
-        except:
-            continue
+        except Exception as e:
+            print(f"⚠️ Erro em {moeda}:", e)
 
 def acompanhar_posicoes(exchange, posicoes):
     for pos in posicoes:
@@ -102,39 +101,40 @@ def acompanhar_posicoes(exchange, posicoes):
 
             if preco_atual < preco_entrada * QUEDA_LIMITE:
                 enviar_telegram(
-                    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?"
+                    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?\n"
                     f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
                 )
             elif percent >= objetivo:
                 enviar_telegram(
-                    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!"
+                    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!\n"
                     f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
                 )
         except Exception as e:
-            print("Erro posição:", e)
+            print("⚠️ Erro posição:", e)
 
 def iniciar_bot():
     exchange = ccxt.kucoin()
     try:
         exchange.load_markets()
     except Exception as e:
-        print("Erro a carregar mercados:", e)
+        print("❌ Erro a carregar mercados:", e)
         return
 
     moedas = [s for s in exchange.symbols if "/USDT" in s and "UP/" not in s and "DOWN/" not in s]
 
     while True:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Verificando mercado...")
+        print(f"🔄 [{datetime.now().strftime('%H:%M:%S')}] Ciclo iniciado.")
         analisar_oportunidades(exchange, moedas)
         acompanhar_posicoes(exchange, carregar_posicoes())
-        print("⏱️ A aguardar 1 hora...")
+        print("⏸️ Esperar 1 hora...\n")
         time.sleep(3600)
 
+# Flask app para manter ativo no Render
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "✅ Bot RSI está a correr."
+    return "✅ Bot RSI com debug está ativo."
 
 if __name__ == "__main__":
     threading.Thread(target=iniciar_bot).start()
