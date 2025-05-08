@@ -101,14 +101,12 @@ def acompanhar_posicoes(exchange, posicoes):
 
             if preco_atual < preco_entrada * QUEDA_LIMITE:
                 enviar_telegram(
-                    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?
-"
+                    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?"
                     f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
                 )
             elif percent >= objetivo:
                 enviar_telegram(
-                    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!
-"
+                    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!"
                     f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
                 )
         except Exception as e:
