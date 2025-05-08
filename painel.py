@@ -146,10 +146,12 @@ if secao == "📊 Painel RSI":
 elif secao == "💼 Minhas Posições":
     st.title("💼 Registo de Posições Pessoais")
 
+    # 📥 Formulário para adicionar nova posição
     with st.form("form_nova_posicao"):
         moeda = st.text_input("Moeda (ex: SOL/USDT)")
         montante = st.number_input("Montante investido (€)", min_value=0.0)
         preco = st.number_input("Preço de entrada (USDT)", min_value=0.0)
+        objetivo = st.number_input("Objetivo de lucro (%)", min_value=0.0, value=10.0, step=0.5)
         submeter = st.form_submit_button("Guardar")
 
         if submeter and moeda and montante and preco:
@@ -157,6 +159,7 @@ elif secao == "💼 Minhas Posições":
                 "moeda": moeda.upper(),
                 "montante": montante,
                 "preco_entrada": preco,
+                "objetivo": objetivo,
                 "data": datetime.now().strftime("%Y-%m-%d %H:%M")
             }
             posicoes = carregar_posicoes()
@@ -164,9 +167,63 @@ elif secao == "💼 Minhas Posições":
             guardar_posicoes(posicoes)
             st.success("✅ Posição registada com sucesso!")
 
-    st.subheader("📋 Posições Atuais")
+    # 📋 Tabela de posições com lucro/prejuízo e alvo
+    st.subheader("📊 Posições Atuais com Lucro/Prejuízo")
+
     posicoes = carregar_posicoes()
     if posicoes:
-        st.table(posicoes)
+        exchange = ccxt.kucoin()  # adapta à tua exchange
+        dados = []
+        for pos in posicoes:
+            try:
+                ticker = exchange.fetch_ticker(pos['moeda'])
+                preco_atual = ticker['last']
+                investido = pos['montante']
+                preco_entrada = pos['preco_entrada']
+                objetivo = pos.get('objetivo', 10.0)
+
+                valor_atual = preco_atual * (investido / preco_entrada)
+                lucro = valor_atual - investido
+                percent = (lucro / investido) * 100
+                atingiu_objetivo = percent >= objetivo
+
+                dados.append({
+                    "Moeda": pos['moeda'],
+                    "Data Entrada": pos['data'],
+                    "Preço Entrada": preco_entrada,
+                    "Preço Atual": round(preco_atual, 2),
+                    "Investido (€)": round(investido, 2),
+                    "Valor Atual (€)": round(valor_atual, 2),
+                    "Lucro (€)": round(lucro, 2),
+                    "Variação (%)": round(percent, 2),
+                    "🎯 Objetivo (%)": objetivo,
+                    "🏁 Alvo Atingido": "✅" if atingiu_objetivo else "❌"
+                })
+            except Exception as e:
+                st.error(f"Erro ao buscar {pos['moeda']}: {e}")
+
+        df = pd.DataFrame(dados)
+        df = df.sort_values("Variação (%)", ascending=False)
+
+        # Colorir linhas
+        def cor_lucro(val):
+            if isinstance(val, (float, int)):
+                if val > 0:
+                    return 'background-color: #d4edda'  # verde
+                elif val < 0:
+                    return 'background-color: #f8d7da'  # vermelho
+            return ''
+        def cor_alvo(val):
+            return 'background-color: #d4edda' if val == '✅' else ''
+
+        st.dataframe(
+            df.style
+              .applymap(cor_lucro, subset=['Lucro (€)', 'Variação (%)'])
+              .applymap(cor_alvo, subset=['🏁 Alvo Atingido']),
+            use_container_width=True
+        )
+
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Exportar posições", csv, "posicoes.csv", "text/csv")
     else:
-        st.info("Nenhuma posição registada.")
+        st.info("Ainda não registaste nenhuma posição.")
