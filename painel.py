@@ -146,8 +146,11 @@ if secao == "📊 Painel RSI":
 elif secao == "💼 Minhas Posições":
     st.title("💼 Registo de Posições Pessoais")
 
+    posicoes = carregar_posicoes()
+
     # 📥 Formulário para adicionar nova posição
     with st.form("form_nova_posicao"):
+        st.subheader("➕ Adicionar Nova Posição")
         moeda = st.text_input("Moeda (ex: SOL/USDT)")
         montante = st.number_input("Montante investido (€)", min_value=0.0)
         preco = st.number_input("Preço de entrada (USDT)", min_value=0.0)
@@ -162,19 +165,18 @@ elif secao == "💼 Minhas Posições":
                 "objetivo": objetivo,
                 "data": datetime.now().strftime("%Y-%m-%d %H:%M")
             }
-            posicoes = carregar_posicoes()
             posicoes.append(nova)
             guardar_posicoes(posicoes)
             st.success("✅ Posição registada com sucesso!")
+            st.experimental_rerun()
 
-    # 📋 Tabela de posições com lucro/prejuízo e alvo
+    st.markdown("---")
     st.subheader("📊 Posições Atuais com Lucro/Prejuízo")
 
-    posicoes = carregar_posicoes()
     if posicoes:
-        exchange = ccxt.kucoin()  # adapta à tua exchange
+        exchange = ccxt.kucoin()
         dados = []
-        for pos in posicoes:
+        for i, pos in enumerate(posicoes):
             try:
                 ticker = exchange.fetch_ticker(pos['moeda'])
                 preco_atual = ticker['last']
@@ -188,6 +190,7 @@ elif secao == "💼 Minhas Posições":
                 atingiu_objetivo = percent >= objetivo
 
                 dados.append({
+                    "Index": i,
                     "Moeda": pos['moeda'],
                     "Data Entrada": pos['data'],
                     "Preço Entrada": preco_entrada,
@@ -205,25 +208,57 @@ elif secao == "💼 Minhas Posições":
         df = pd.DataFrame(dados)
         df = df.sort_values("Variação (%)", ascending=False)
 
-        # Colorir linhas
+        # Exibir tabela com estilo
         def cor_lucro(val):
             if isinstance(val, (float, int)):
                 if val > 0:
-                    return 'background-color: #d4edda'  # verde
+                    return 'background-color: #d4edda'
                 elif val < 0:
-                    return 'background-color: #f8d7da'  # vermelho
+                    return 'background-color: #f8d7da'
             return ''
+
         def cor_alvo(val):
             return 'background-color: #d4edda' if val == '✅' else ''
 
         st.dataframe(
-            df.style
+            df.drop(columns=["Index"]).style
               .applymap(cor_lucro, subset=['Lucro (€)', 'Variação (%)'])
               .applymap(cor_alvo, subset=['🏁 Alvo Atingido']),
             use_container_width=True
         )
 
-        csv = df.to_csv(index=False).encode('utf-8')
+        # 🛠️ Edição/Remoção
+        st.markdown("### ✏️ Editar ou Remover Posição")
+        index = st.number_input("Seleciona o índice da posição", min_value=0, max_value=len(posicoes)-1, step=1)
+        pos = posicoes[index]
+
+        with st.form("editar_posicao"):
+            moeda = st.text_input("Moeda", value=pos["moeda"])
+            montante = st.number_input("Montante investido (€)", value=pos["montante"])
+            preco = st.number_input("Preço de entrada (USDT)", value=pos["preco_entrada"])
+            objetivo = st.number_input("Objetivo de lucro (%)", value=pos.get("objetivo", 10.0))
+            editar = st.form_submit_button("💾 Atualizar posição")
+
+            if editar:
+                posicoes[index] = {
+                    "moeda": moeda.upper(),
+                    "montante": montante,
+                    "preco_entrada": preco,
+                    "objetivo": objetivo,
+                    "data": pos["data"]
+                }
+                guardar_posicoes(posicoes)
+                st.success("✅ Posição atualizada!")
+                st.experimental_rerun()
+
+        if st.button("🗑️ Remover esta posição"):
+            del posicoes[index]
+            guardar_posicoes(posicoes)
+            st.warning("❌ Posição removida.")
+            st.experimental_rerun()
+
+        # Exportar
+        csv = df.drop(columns=["Index"]).to_csv(index=False).encode('utf-8')
         st.download_button("📥 Exportar posições", csv, "posicoes.csv", "text/csv")
     else:
         st.info("Ainda não registaste nenhuma posição.")
