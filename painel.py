@@ -44,7 +44,6 @@ tempo_refresco = st.sidebar.slider("⏳ Atualizar a cada (segundos)", 10, 300, 6
 timeframe = st.sidebar.selectbox("🕒 Intervalo de tempo", ["15m", "1h", "4h"], index=1)
 exchanges_disponiveis = ['kucoin', 'coinbase', 'kraken']
 exchange_nome = st.sidebar.selectbox("🌐 Exchange", exchanges_disponiveis, index=0)
-filtro_alerta = st.sidebar.radio("⚠️ Tipo de alerta a mostrar", ["Todos", "ENTRADA", "SAÍDA", "NEUTRO"])
 
 # 🔽 Menu de secções
 st.sidebar.markdown("---")
@@ -282,6 +281,50 @@ elif secao == "💼 Minhas Posições":
     else:
         st.info("Ainda não registaste nenhuma posição.")
 
+ with st.expander("➕ Reforçar esta posição"):
+            novo_montante = st.number_input("Montante adicional (€)", min_value=0.0, key="reforco_montante")
+            novo_preco = st.number_input("Preço da nova compra (USDT)", min_value=0.0, key="reforco_preco")
+            if st.button("Aplicar Reforço"):
+                if novo_montante > 0 and novo_preco > 0:
+                    antigo_montante = pos["montante"]
+                    antigo_preco = pos["preco_entrada"]
+                    total_valor = (antigo_montante / antigo_preco) + (novo_montante / novo_preco)
+                    novo_total_investido = antigo_montante + novo_montante
+                    novo_preco_medio = novo_total_investido / total_valor
+                    pos["montante"] = round(novo_total_investido, 2)
+                    pos["preco_entrada"] = round(novo_preco_medio, 4)
+                    guardar_posicoes(posicoes)
+                    st.success("✅ Reforço aplicado com sucesso!")
+                    st.rerun()
+
+        if st.button("💰 Vendi esta posição"):
+            try:
+                ticker = ccxt.kucoin().fetch_ticker(pos["moeda"])
+                preco_atual = ticker["last"]
+                investido = pos["montante"]
+                preco_entrada = pos["preco_entrada"]
+                valor_final = preco_atual * (investido / preco_entrada)
+                lucro = valor_final - investido
+                percent = (lucro / investido) * 100
+
+                registro = {
+                    "moeda": pos["moeda"],
+                    "data_venda": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "preco_venda": preco_atual,
+                    "preco_entrada": preco_entrada,
+                    "investido": investido,
+                    "valor_final": round(valor_final, 2),
+                    "lucro": round(lucro, 2),
+                    "percentual": round(percent, 2)
+                }
+                guardar_venda(registro)
+                del posicoes[index]
+                guardar_posicoes(posicoes)
+                st.success("✅ Posição vendida e registada no histórico.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao vender posição: {e}")
+
 elif secao == "📈 Estratégias":
     st.title("📈 Estratégias Automáticas Detetadas")
     FICHEIRO = "estrategia_log.csv"
@@ -310,3 +353,20 @@ elif secao == "📜 Histórico de Vendas":
             st.info("Nenhuma venda registada ainda.")
     else:
         st.warning("Ficheiro de histórico não encontrado.")
+
+
+# ===== FUNCIONALIDADES ADICIONADAS =====
+
+def guardar_venda(registro):
+    FICHEIRO_HISTORICO = "historico_vendas.json"
+    historico = []
+    if os.path.exists(FICHEIRO_HISTORICO):
+        with open(FICHEIRO_HISTORICO, "r") as f:
+            try:
+                historico = json.load(f)
+            except:
+                historico = []
+    historico.append(registro)
+    with open(FICHEIRO_HISTORICO, "w") as f:
+        json.dump(historico, f, indent=2)
+
