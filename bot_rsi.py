@@ -85,8 +85,10 @@ def acompanhar_posicoes(exchange, posicoes):
             percent = (lucro / investido) * 100
 
             if preco_atual < preco_entrada * 0.95:
-                enviar_telegram(f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?
-Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
+                enviar_telegram(
+                    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?\n"
+                    f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
+                )
             elif percent >= objetivo:
                 enviar_telegram(f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!
 Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
