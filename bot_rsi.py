@@ -1,3 +1,4 @@
+
 import time
 import ccxt
 import pandas as pd
@@ -16,7 +17,8 @@ FICHEIRO_POSICOES = "posicoes.json"
 QUEDA_LIMITE = 0.95
 OBJETIVO_PADRAO = 10
 
-# Enviar mensagem para o Telegram
+estado_alertas = {}
+
 def enviar_telegram(mensagem):
     if len(mensagem) > 4096:
         mensagem = mensagem[:4093] + "..."
@@ -27,7 +29,6 @@ def enviar_telegram(mensagem):
     except Exception as e:
         print("Erro Telegram:", e)
 
-# Carregar posições pessoais
 def carregar_posicoes():
     if not os.path.exists(FICHEIRO_POSICOES):
         return []
@@ -37,7 +38,6 @@ def carregar_posicoes():
         except:
             return []
 
-# Analisar mercado e escolher até 5 oportunidades fortes
 def analisar_oportunidades(exchange, moedas, limite=5):
     oportunidades = []
     for moeda in moedas:
@@ -48,15 +48,20 @@ def analisar_oportunidades(exchange, moedas, limite=5):
             df["EMA"] = EMAIndicator(close=df["close"]).ema_indicator()
             df["MACD"] = MACD(close=df["close"]).macd()
             df["MACD_signal"] = MACD(close=df["close"]).macd_signal()
+            df["volume_medio"] = df["volume"].rolling(window=14).mean()
             bb = BollingerBands(close=df["close"])
             df["BB_lower"] = bb.bollinger_lband()
+            df["BB_upper"] = bb.bollinger_hband()
 
             rsi = df["RSI"].iloc[-1]
             preco = df["close"].iloc[-1]
             ema = df["EMA"].iloc[-1]
             macd = df["MACD"].iloc[-1]
             macd_sig = df["MACD_signal"].iloc[-1]
+            vol = df["volume"].iloc[-1]
+            vol_med = df["volume_medio"].iloc[-1]
             bb_inf = df["BB_lower"].iloc[-1]
+            bb_sup = df["BB_upper"].iloc[-1]
 
             sinais = 0
             if rsi < 30: sinais += 1
@@ -64,15 +69,29 @@ def analisar_oportunidades(exchange, moedas, limite=5):
             if preco > ema: sinais += 1
             if macd > macd_sig: sinais += 1
 
-            if sinais >= 3:
-                oportunidades.append((moeda, preco, rsi, sinais))
+            alerta_hash = f"{moeda}-{round(rsi, 1)}-{sinais}"
+            if sinais >= 3 and estado_alertas.get(moeda) != alerta_hash:
+                estado_alertas[moeda] = alerta_hash
+                mensagem = (
+                    f"🚨 Oportunidade: {moeda}
+"
+                    f"💰 Preço: {preco:.2f} USDT
+"
+                    f"📊 RSI: {rsi:.2f} | EMA: {ema:.2f}
+"
+                    f"📈 MACD: {macd:.2f} / Sinal: {macd_sig:.2f}
+"
+                    f"📉 Volume: {vol:.2f} (média: {vol_med:.2f})
+"
+                    f"🎯 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]
+"
+                    f"⚙️ Força: {sinais}/4"
+                )
+                enviar_telegram(mensagem)
+
         except:
             continue
 
-    oportunidades.sort(key=lambda x: -x[3])
-    return oportunidades[:limite]
-
-# Verificar posições pessoais
 def acompanhar_posicoes(exchange, posicoes):
     for pos in posicoes:
         try:
@@ -88,18 +107,19 @@ def acompanhar_posicoes(exchange, posicoes):
 
             if preco_atual < preco_entrada * QUEDA_LIMITE:
                 enviar_telegram(
-                    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?\n"
+                    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?
+"
                     f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
                 )
             elif percent >= objetivo:
                 enviar_telegram(
-                    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!\n"
+                    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!
+"
                     f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
                 )
         except Exception as e:
             print("Erro posição:", e)
 
-# Ciclo principal
 def iniciar_bot():
     exchange = ccxt.kucoin()
     try:
@@ -112,20 +132,11 @@ def iniciar_bot():
 
     while True:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Verificando mercado...")
-        oportunidades = analisar_oportunidades(exchange, moedas)
-        for moeda, preco, rsi, sinais in oportunidades:
-            enviar_telegram(
-                f"🚨 Oportunidade: {moeda}\n"
-                f"💰 Preço: {preco:.2f} | RSI: {rsi:.2f} | Força: {sinais}/4"
-            )
-
-        posicoes = carregar_posicoes()
-        acompanhar_posicoes(exchange, posicoes)
-
+        analisar_oportunidades(exchange, moedas)
+        acompanhar_posicoes(exchange, carregar_posicoes())
         print("⏱️ A aguardar 1 hora...")
         time.sleep(3600)
 
-# API Render (para manter ativo)
 app = Flask(__name__)
 
 @app.route('/')
