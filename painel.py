@@ -40,7 +40,8 @@ filtro_alerta = st.sidebar.radio("⚠️ Tipo de alerta a mostrar", ["Todos", "E
 
 # 🔽 Menu de secções (AQUI ESTAVA A FALTAR!)
 st.sidebar.markdown("---")
-secao = st.sidebar.radio("📂 Secções", ["📊 Painel RSI", "💼 Minhas Posições"])
+secao = st.sidebar.radio("📂 Secções", ["📊 Painel RSI", "💼 Minhas Posições", "📈 Estratégias"])
+
 
 # 🔄 Atualização automática
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
@@ -262,3 +263,34 @@ elif secao == "💼 Minhas Posições":
         st.download_button("📥 Exportar posições", csv, "posicoes.csv", "text/csv")
     else:
         st.info("Ainda não registaste nenhuma posição.")
+
+elif secao == "📈 Estratégias":
+    st.title("📈 Estratégias Automáticas Detetadas")
+    FICHEIRO = "estrategia_log.csv"
+
+    if os.path.exists(FICHEIRO):
+        df = pd.read_csv(FICHEIRO)
+
+        st.sidebar.header("🔎 Filtros de Estratégias")
+        moedas = sorted(df['Moeda'].unique())
+        moeda_filtro = st.sidebar.multiselect("Filtrar por moeda", moedas, default=moedas)
+        direcao_filtro = st.sidebar.radio("Tipo de sinal", ["Todos", "ENTRADA", "SAÍDA"])
+
+        df_filtrado = df[df['Moeda'].isin(moeda_filtro)]
+        if direcao_filtro != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Direcao"] == direcao_filtro]
+
+        st.sidebar.markdown("📊 Ordenar por:")
+        ordem = st.sidebar.selectbox("Coluna", ["Data", "Moeda", "Preço", "Sinais", "RSI"], index=0)
+        asc = st.sidebar.checkbox("⬆️ Ordem crescente", value=False)
+
+        if ordem in df_filtrado.columns:
+            df_filtrado = df_filtrado.sort_values(ordem, ascending=asc)
+
+        st.dataframe(df_filtrado, use_container_width=True)
+
+        csv = df_filtrado.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Exportar CSV", csv, "estrategias.csv", "text/csv")
+
+    else:
+        st.warning("❌ Ainda não há estratégias registadas.")
