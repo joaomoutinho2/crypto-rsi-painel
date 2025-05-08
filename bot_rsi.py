@@ -86,14 +86,12 @@ def acompanhar_posicoes(exchange, posicoes):
 
             if preco_atual < preco_entrada * 0.95:
                 enviar_telegram(
-                    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?\n"
-                    f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
-                )
+    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?\n"
+Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
             elif percent >= objetivo:
                 enviar_telegram(
-                    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!\n"
-                    f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
-                )
+    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!\n"
+Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
         except:
             continue
 
@@ -107,7 +105,8 @@ def iniciar_bot():
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Verificando mercado...")
         oportunidades = analisar_oportunidades(exchange, moedas)
         for moeda, preco, rsi, sinais in oportunidades:
-            enviar_telegram(f"🚨 Oportunidade: {moeda}
+            enviar_telegram(
+    f"🚨 Oportunidade: {moeda}\n"
 💰 Preço: {preco:.2f} | RSI: {rsi:.2f} | Força: {sinais}/4")
 
         posicoes = carregar_posicoes()
@@ -127,4 +126,3 @@ def home():
 if __name__ == "__main__":
     threading.Thread(target=iniciar_bot).start()
     app.run(host="0.0.0.0", port=10000)
-
