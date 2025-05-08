@@ -34,6 +34,19 @@ def guardar_posicoes(posicoes):
     except Exception as e:
         st.error(f"❌ Erro ao guardar posições: {e}")
 
+def guardar_venda(registro):
+    FICHEIRO_HISTORICO = "historico_vendas.json"
+    historico = []
+    if os.path.exists(FICHEIRO_HISTORICO):
+        with open(FICHEIRO_HISTORICO, "r") as f:
+            try:
+                historico = json.load(f)
+            except:
+                historico = []
+    historico.append(registro)
+    with open(FICHEIRO_HISTORICO, "w") as f:
+        json.dump(historico, f, indent=2)
+
 # ⚙️ Configuração geral
 st.set_page_config(page_title="Painel RSI", layout="wide")
 st.title("📈 Painel RSI com Indicadores Técnicos Avançados")
@@ -282,20 +295,20 @@ elif secao == "💼 Minhas Posições":
         st.info("Ainda não registaste nenhuma posição.")
 
     with st.expander("➕ Reforçar esta posição"):
-            novo_montante = st.number_input("Montante adicional (€)", min_value=0.0, key="reforco_montante")
-            novo_preco = st.number_input("Preço da nova compra (USDT)", min_value=0.0, key="reforco_preco")
-            if st.button("Aplicar Reforço"):
-                if novo_montante > 0 and novo_preco > 0:
-                    antigo_montante = pos["montante"]
-                    antigo_preco = pos["preco_entrada"]
-                    total_valor = (antigo_montante / antigo_preco) + (novo_montante / novo_preco)
-                    novo_total_investido = antigo_montante + novo_montante
-                    novo_preco_medio = novo_total_investido / total_valor
-                    pos["montante"] = round(novo_total_investido, 2)
-                    pos["preco_entrada"] = round(novo_preco_medio, 4)
-                    guardar_posicoes(posicoes)
-                    st.success("✅ Reforço aplicado com sucesso!")
-                    st.rerun()
+        novo_montante = st.number_input("Montante adicional (€)", min_value=0.0, key="reforco_montante")
+        novo_preco = st.number_input("Preço da nova compra (USDT)", min_value=0.0, key="reforco_preco")
+        if st.button("Aplicar Reforço"):
+            if novo_montante > 0 and novo_preco > 0:
+                antigo_montante = pos["montante"]
+                antigo_preco = pos["preco_entrada"]
+                total_valor = (antigo_montante / antigo_preco) + (novo_montante / novo_preco)
+                novo_total_investido = antigo_montante + novo_montante
+                novo_preco_medio = novo_total_investido / total_valor
+                pos["montante"] = round(novo_total_investido, 2)
+                pos["preco_entrada"] = round(novo_preco_medio, 4)
+                guardar_posicoes(posicoes)
+                st.success("✅ Reforço aplicado com sucesso!")
+                st.rerun()
 
         if st.button("💰 Vendi esta posição"):
             try:
@@ -325,15 +338,24 @@ elif secao == "💼 Minhas Posições":
             except Exception as e:
                 st.error(f"Erro ao vender posição: {e}")
 
+# ============================
+# 📈 ESTRATÉGIAS
+# ============================
 elif secao == "📈 Estratégias":
     st.title("📈 Estratégias Automáticas Detetadas")
-    FICHEIRO = "estrategia_log.csv"
-
-    if os.path.exists(FICHEIRO):
-        df = pd.read_csv(FICHEIRO)
-
-        st.sidebar.header("🔎 Filtros de Estratégias")
-
+    if os.path.exists(FICHEIRO_ESTRATEGIAS):
+        try:
+            df = pd.read_csv(FICHEIRO_ESTRATEGIAS)
+            if not df.empty:
+                st.dataframe(df, use_container_width=True)
+                csv = df.to_csv(index=False).encode("utf-8")
+                st.download_button("📥 Exportar CSV", csv, "estrategias.csv", "text/csv")
+            else:
+                st.info("Nenhuma estratégia registada ainda.")
+        except Exception as e:
+            st.error(f"❌ Erro ao carregar estratégias: {e}")
+    else:
+        st.warning("Ficheiro de estratégias não encontrado.")
 
 # ============================
 # 📜 HISTÓRICO DE VENDAS
@@ -353,20 +375,4 @@ elif secao == "📜 Histórico de Vendas":
             st.info("Nenhuma venda registada ainda.")
     else:
         st.warning("Ficheiro de histórico não encontrado.")
-
-
-# ===== FUNCIONALIDADES ADICIONADAS =====
-
-def guardar_venda(registro):
-    FICHEIRO_HISTORICO = "historico_vendas.json"
-    historico = []
-    if os.path.exists(FICHEIRO_HISTORICO):
-        with open(FICHEIRO_HISTORICO, "r") as f:
-            try:
-                historico = json.load(f)
-            except:
-                historico = []
-    historico.append(registro)
-    with open(FICHEIRO_HISTORICO, "w") as f:
-        json.dump(historico, f, indent=2)
 
