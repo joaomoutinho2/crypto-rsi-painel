@@ -281,7 +281,7 @@ elif secao == "💼 Minhas Posições":
     else:
         st.info("Ainda não registaste nenhuma posição.")
 
- with st.expander("➕ Reforçar esta posição"):
+    with st.expander("➕ Reforçar esta posição"):
             novo_montante = st.number_input("Montante adicional (€)", min_value=0.0, key="reforco_montante")
             novo_preco = st.number_input("Preço da nova compra (USDT)", min_value=0.0, key="reforco_preco")
             if st.button("Aplicar Reforço"):
