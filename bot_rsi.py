@@ -1,4 +1,3 @@
-
 import time
 import ccxt
 import pandas as pd
@@ -25,7 +24,9 @@ def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
     try:
-        requests.post(url, data=data)
+        response = requests.post(url, data=data)
+        if response.status_code != 200:
+            print(f"Erro ao enviar mensagem: {response.text}")
     except Exception as e:
         print("Erro Telegram:", e)
 
