@@ -90,8 +90,10 @@ def acompanhar_posicoes(exchange, posicoes):
                     f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
                 )
             elif percent >= objetivo:
-                enviar_telegram(f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!
-Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
+                enviar_telegram(
+                    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!\n"
+                    f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
+                )
         except:
             continue
 
