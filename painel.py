@@ -152,7 +152,7 @@ elif secao == "💼 Minhas Posições":
     # 📥 Formulário para adicionar nova posição
     with st.form("form_nova_posicao"):
         st.subheader("➕ Adicionar Nova Posição")
-        moeda = st.text_input("Moeda (ex: SOL/USDT)")
+        moeda = st.selectbox("Moeda", MOEDAS)  # Substituído por selectbox
         montante = st.number_input("Montante investido (€)", min_value=0.0)
         preco = st.number_input("Preço de entrada (USDT)", min_value=0.0)
         objetivo = st.number_input("Objetivo de lucro (%)", min_value=0.0, value=10.0, step=0.5)
