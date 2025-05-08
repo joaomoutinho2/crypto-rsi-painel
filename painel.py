@@ -48,7 +48,8 @@ filtro_alerta = st.sidebar.radio("⚠️ Tipo de alerta a mostrar", ["Todos", "E
 
 # 🔽 Menu de secções
 st.sidebar.markdown("---")
-secao = st.sidebar.radio("📂 Secções", ["📊 Painel RSI", "💼 Minhas Posições", "📈 Estratégias"])
+secao = st.sidebar.radio("📂 Secções", ["📊 Painel RSI", "💼 Minhas Posições", "📈 Estratégias", "📜 Histórico de Vendas"])
+
 
 # 🔄 Atualização automática
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
