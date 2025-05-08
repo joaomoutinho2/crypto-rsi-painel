@@ -168,7 +168,7 @@ elif secao == "💼 Minhas Posições":
             posicoes.append(nova)
             guardar_posicoes(posicoes)
             st.success("✅ Posição registada com sucesso!")
-            st.experimental_rerun()
+            st.rerun()
 
     st.markdown("---")
     st.subheader("📊 Posições Atuais com Lucro/Prejuízo")
@@ -249,13 +249,13 @@ elif secao == "💼 Minhas Posições":
                 }
                 guardar_posicoes(posicoes)
                 st.success("✅ Posição atualizada!")
-                st.experimental_rerun()
+                st.rerun()
 
         if st.button("🗑️ Remover esta posição"):
             del posicoes[index]
             guardar_posicoes(posicoes)
             st.warning("❌ Posição removida.")
-            st.experimental_rerun()
+            st.rerun()
 
         # Exportar
         csv = df.drop(columns=["Index"]).to_csv(index=False).encode('utf-8')
