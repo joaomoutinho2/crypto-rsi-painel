@@ -312,3 +312,31 @@ elif secao == "📈 Estratégias":
 
     else:
         st.warning("❌ Ainda não há estratégias registadas.")
+
+def guardar_venda(registro):
+    FICHEIRO_HISTORICO = "historico_vendas.json"
+    historico = []
+    if os.path.exists(FICHEIRO_HISTORICO):
+        with open(FICHEIRO_HISTORICO, "r") as f:
+            historico = json.load(f)
+    historico.append(registro)
+    with open(FICHEIRO_HISTORICO, "w") as f:
+        json.dump(historico, f, indent=2)
+# ============================
+# 📜 HISTÓRICO DE VENDAS
+# ============================
+elif secao == "📜 Histórico de Vendas":
+    FICHEIRO_HISTORICO = "historico_vendas.json"
+    st.title("📜 Histórico de Vendas Realizadas")
+    if os.path.exists(FICHEIRO_HISTORICO):
+        with open(FICHEIRO_HISTORICO, "r") as f:
+            vendas = json.load(f)
+        if vendas:
+            df = pd.DataFrame(vendas)
+            st.dataframe(df, use_container_width=True)
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Exportar CSV", csv, "historico_vendas.csv", "text/csv")
+        else:
+            st.info("Nenhuma venda registada ainda.")
+    else:
+        st.warning("Ficheiro de histórico não encontrado.")
