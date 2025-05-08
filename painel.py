@@ -330,7 +330,7 @@ def guardar_venda(registro):
 
 elif secao == "📜 Histórico de Vendas":
     FICHEIRO_HISTORICO = "historico_vendas.json"
-    st.title("📜 import streamlit as st
+    st.title("📜 Histórico de Vendas Realizadas")
 import pandas as pd
 import matplotlib.pyplot as plt
 import ccxt
