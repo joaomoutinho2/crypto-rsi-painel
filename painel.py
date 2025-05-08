@@ -149,27 +149,38 @@ elif secao == "💼 Minhas Posições":
 
     posicoes = carregar_posicoes()
 
-    # 📥 Formulário para adicionar nova posição
-    with st.form("form_nova_posicao"):
-        st.subheader("➕ Adicionar Nova Posição")
-        moeda = st.selectbox("Moeda", MOEDAS)  # Substituído por selectbox
-        montante = st.number_input("Montante investido (€)", min_value=0.0)
-        preco = st.number_input("Preço de entrada (USDT)", min_value=0.0)
-        objetivo = st.number_input("Objetivo de lucro (%)", min_value=0.0, value=10.0, step=0.5)
-        submeter = st.form_submit_button("Guardar")
+    st.subheader("➕ Adicionar Nova Posição")
 
-        if submeter and moeda and montante and preco:
-            nova = {
-                "moeda": moeda.upper(),
-                "montante": montante,
-                "preco_entrada": preco,
-                "objetivo": objetivo,
-                "data": datetime.now().strftime("%Y-%m-%d %H:%M")
-            }
-            posicoes.append(nova)
-            guardar_posicoes(posicoes)
-            st.success("✅ Posição registada com sucesso!")
-            st.rerun()
+    moeda = st.text_input("Moeda (ex: SOL/USDT)").upper()
+    montante = st.number_input("Montante investido (€)", min_value=0.0)
+    preco = st.number_input("Preço de entrada (USDT)", min_value=0.0)
+    objetivo = st.number_input("Objetivo de lucro (%)", min_value=0.0, value=10.0, step=0.5)
+
+    exchange_validacao = ccxt.kucoin()  # Podes mudar conforme necessidade
+    mercados = exchange_validacao.load_markets()
+    confirmacao = False
+
+    if moeda in mercados:
+        st.success(f"🔍 Encontrado: {moeda} na exchange Kucoin.")
+        confirmacao = True
+    elif moeda:
+        st.error(f"❌ Moeda '{moeda}' não encontrada na Kucoin.")
+
+    with st.form("form_nova_posicao"):
+        if confirmacao:
+            submeter = st.form_submit_button("Guardar")
+            if submeter and moeda and montante and preco:
+                nova = {
+                    "moeda": moeda,
+                    "montante": montante,
+                    "preco_entrada": preco,
+                    "objetivo": objetivo,
+                    "data": datetime.now().strftime("%Y-%m-%d %H:%M")
+                }
+                posicoes.append(nova)
+                guardar_posicoes(posicoes)
+                st.success("✅ Posição registada com sucesso!")
+                st.rerun()
 
     st.markdown("---")
     st.subheader("📊 Posições Atuais com Lucro/Prejuízo")
