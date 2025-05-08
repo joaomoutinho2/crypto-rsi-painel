@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import ccxt
+import json
+from datetime import datetime
 from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.volatility import BollingerBands
@@ -9,11 +11,27 @@ from config import MOEDAS, LOG_PATH
 from io import BytesIO
 from streamlit_autorefresh import st_autorefresh
 from telegram_alert import enviar_telegram
+import os
 
+# Caminho do ficheiro de posições
+FICHEIRO_POSICOES = "posicoes.json"
+
+# Funções para lidar com posições
+def carregar_posicoes():
+    if not os.path.exists(FICHEIRO_POSICOES):
+        return []
+    with open(FICHEIRO_POSICOES, "r") as f:
+        return json.load(f)
+
+def guardar_posicoes(posicoes):
+    with open(FICHEIRO_POSICOES, "w") as f:
+        json.dump(posicoes, f, indent=2)
+
+# Configuração da página
 st.set_page_config(page_title="Painel RSI Completo", layout="wide")
 st.title("📈 Painel RSI com Indicadores Técnicos Avançados")
 
-# Filtros
+# Sidebar - Filtros e Secções
 st.sidebar.header("⚙️ Filtros")
 tempo_refresco = st.sidebar.slider("⏳ Atualizar a cada (segundos)", 10, 300, 60, step=10)
 timeframe = st.sidebar.selectbox("🕒 Intervalo de tempo", ["15m", "1h", "4h"], index=1)
@@ -21,133 +39,169 @@ exchanges_disponiveis = ['kucoin', 'coinbase', 'kraken']
 exchange_nome = st.sidebar.selectbox("🌐 Exchange", exchanges_disponiveis, index=0)
 filtro_alerta = st.sidebar.radio("⚠️ Tipo de alerta a mostrar", ["Todos", "ENTRADA", "SAÍDA", "NEUTRO"])
 
+st.sidebar.markdown("---")
+secao = st.sidebar.radio("📂 Secções", ["📊 Painel RSI", "💼 Minhas Posições"])
+
+# Autorefresh
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
-exchange = getattr(ccxt, exchange_nome)()
-estado_alertas = {}
 
-for moeda in MOEDAS:
-    try:
-        candles = exchange.fetch_ohlcv(moeda, timeframe=timeframe, limit=100)
-        df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+# Secção: Painel RSI
+if secao == "📊 Painel RSI":
+    exchange = getattr(ccxt, exchange_nome)()
+    estado_alertas = {}
 
-        df['RSI'] = RSIIndicator(close=df['close'], window=14).rsi()
-        df['SMA'] = SMAIndicator(close=df['close'], window=14).sma_indicator()
-        df['EMA'] = EMAIndicator(close=df['close'], window=14).ema_indicator()
-        df['volume_medio'] = df['volume'].rolling(window=14).mean()
+    for moeda in MOEDAS:
+        try:
+            candles = exchange.fetch_ohlcv(moeda, timeframe=timeframe, limit=100)
+            df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
-        macd = MACD(close=df['close'])
-        df['MACD'] = macd.macd()
-        df['MACD_signal'] = macd.macd_signal()
+            df['RSI'] = RSIIndicator(close=df['close'], window=14).rsi()
+            df['SMA'] = SMAIndicator(close=df['close'], window=14).sma_indicator()
+            df['EMA'] = EMAIndicator(close=df['close'], window=14).ema_indicator()
+            df['volume_medio'] = df['volume'].rolling(window=14).mean()
 
-        bb = BollingerBands(close=df['close'], window=20, window_dev=2)
-        df['BB_upper'] = bb.bollinger_hband()
-        df['BB_lower'] = bb.bollinger_lband()
+            macd = MACD(close=df['close'])
+            df['MACD'] = macd.macd()
+            df['MACD_signal'] = macd.macd_signal()
 
-        rsi_atual = df['RSI'].iloc[-1]
-        preco_atual = df['close'].iloc[-1]
-        sma_atual = df['SMA'].iloc[-1]
-        ema_atual = df['EMA'].iloc[-1]
-        vol_atual = df['volume'].iloc[-1]
-        vol_medio = df['volume_medio'].iloc[-1]
-        macd_val = df['MACD'].iloc[-1]
-        macd_sig = df['MACD_signal'].iloc[-1]
-        bb_sup = df['BB_upper'].iloc[-1]
-        bb_inf = df['BB_lower'].iloc[-1]
+            bb = BollingerBands(close=df['close'], window=20, window_dev=2)
+            df['BB_upper'] = bb.bollinger_hband()
+            df['BB_lower'] = bb.bollinger_lband()
 
-        st.subheader(f"📊 {moeda} ({exchange_nome})")
+            rsi_atual = df['RSI'].iloc[-1]
+            preco_atual = df['close'].iloc[-1]
+            sma_atual = df['SMA'].iloc[-1]
+            ema_atual = df['EMA'].iloc[-1]
+            vol_atual = df['volume'].iloc[-1]
+            vol_medio = df['volume_medio'].iloc[-1]
+            macd_val = df['MACD'].iloc[-1]
+            macd_sig = df['MACD_signal'].iloc[-1]
+            bb_sup = df['BB_upper'].iloc[-1]
+            bb_inf = df['BB_lower'].iloc[-1]
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("💰 Preço", f"{preco_atual:.2f} USDT")
-        with col2:
-            st.metric("📈 RSI", f"{rsi_atual:.2f}")
-        with col3:
-            st.metric("📊 SMA", f"{sma_atual:.2f}")
+            st.subheader(f"📊 {moeda} ({exchange_nome})")
 
-        # Sinal principal
-        alerta = "NEUTRO"
-        emoji = "ℹ️"
-        if rsi_atual < 30:
-            alerta = "ENTRADA"
-            emoji = "🔔"
-        elif rsi_atual > 70:
-            alerta = "SAÍDA"
-            emoji = "🔔"
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("💰 Preço", f"{preco_atual:.2f} USDT")
+            with col2:
+                st.metric("📈 RSI", f"{rsi_atual:.2f}")
+            with col3:
+                st.metric("📊 SMA", f"{sma_atual:.2f}")
 
-        st.markdown(f"**{emoji} Estado: {alerta}**")
+            # Sinal principal
+            alerta = "NEUTRO"
+            emoji = "ℹ️"
+            if rsi_atual < 30:
+                alerta = "ENTRADA"
+                emoji = "🔔"
+            elif rsi_atual > 70:
+                alerta = "SAÍDA"
+                emoji = "🔔"
 
-        # Confirmações
-        confirmacao = []
-        if alerta == "ENTRADA":
-            if preco_atual > sma_atual: confirmacao.append("✅ preço > SMA")
-            if preco_atual > ema_atual: confirmacao.append("✅ preço > EMA")
-            if vol_atual > vol_medio: confirmacao.append("✅ volume alto")
-            if macd_val > macd_sig: confirmacao.append("✅ MACD cruzado p/ cima")
-            if preco_atual < bb_inf: confirmacao.append("✅ fora da banda inferior")
-        elif alerta == "SAÍDA":
-            if preco_atual < sma_atual: confirmacao.append("✅ preço < SMA")
-            if preco_atual < ema_atual: confirmacao.append("✅ preço < EMA")
-            if vol_atual > vol_medio: confirmacao.append("✅ volume alto")
-            if macd_val < macd_sig: confirmacao.append("✅ MACD cruzado p/ baixo")
-            if preco_atual > bb_sup: confirmacao.append("✅ fora da banda superior")
-        else:
-            confirmacao.append("ℹ️ RSI em zona neutra")
+            st.markdown(f"**{emoji} Estado: {alerta}**")
 
-        analise_texto = " | ".join(confirmacao)
-        st.markdown(f"**📋 Análise:** {analise_texto}")
+            # Confirmações
+            confirmacao = []
+            if alerta == "ENTRADA":
+                if preco_atual > sma_atual: confirmacao.append("✅ preço > SMA")
+                if preco_atual > ema_atual: confirmacao.append("✅ preço > EMA")
+                if vol_atual > vol_medio: confirmacao.append("✅ volume alto")
+                if macd_val > macd_sig: confirmacao.append("✅ MACD cruzado p/ cima")
+                if preco_atual < bb_inf: confirmacao.append("✅ fora da banda inferior")
+            elif alerta == "SAÍDA":
+                if preco_atual < sma_atual: confirmacao.append("✅ preço < SMA")
+                if preco_atual < ema_atual: confirmacao.append("✅ preço < EMA")
+                if vol_atual > vol_medio: confirmacao.append("✅ volume alto")
+                if macd_val < macd_sig: confirmacao.append("✅ MACD cruzado p/ baixo")
+                if preco_atual > bb_sup: confirmacao.append("✅ fora da banda superior")
+            else:
+                confirmacao.append("ℹ️ RSI em zona neutra")
 
-        # Telegram
-        alerta_anterior = estado_alertas.get(moeda)
-        if alerta != alerta_anterior:
-            mensagem = (
-                f"📈 Alerta RSI - {moeda} ({exchange_nome})\n"
-                f"⏱️ Timeframe: {timeframe}\n"
-                f"💰 Preço: {preco_atual:.2f} USDT\n"
-                f"📊 RSI: {rsi_atual:.2f} | SMA: {sma_atual:.2f} | EMA: {ema_atual:.2f}\n"
-                f"📉 Volume: {vol_atual:.2f} (média: {vol_medio:.2f})\n"
-                f"📊 MACD: {macd_val:.2f} / sinal: {macd_sig:.2f}\n"
-                f"📉 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]\n"
-                f"{emoji} Sinal: {alerta}\n"
-                f"{analise_texto}"
+            analise_texto = " | ".join(confirmacao)
+            st.markdown(f"**📋 Análise:** {analise_texto}")
+
+            # Telegram
+            alerta_anterior = estado_alertas.get(moeda)
+            if alerta != alerta_anterior:
+                mensagem = (
+                    f"📈 Alerta RSI - {moeda} ({exchange_nome})\n"
+                    f"⏱️ Timeframe: {timeframe}\n"
+                    f"💰 Preço: {preco_atual:.2f} USDT\n"
+                    f"📊 RSI: {rsi_atual:.2f} | SMA: {sma_atual:.2f} | EMA: {ema_atual:.2f}\n"
+                    f"📉 Volume: {vol_atual:.2f} (média: {vol_medio:.2f})\n"
+                    f"📊 MACD: {macd_val:.2f} / sinal: {macd_sig:.2f}\n"
+                    f"📉 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]\n"
+                    f"{emoji} Sinal: {alerta}\n"
+                    f"{analise_texto}"
+                )
+                enviar_telegram(mensagem)
+                estado_alertas[moeda] = alerta
+
+            # Gráfico
+            st.markdown("#### RSI, Preço, SMA, EMA, Bollinger")
+            fig, ax = plt.subplots(figsize=(10, 4))
+            ax.plot(df['close'], label='Preço', color='blue')
+            ax.plot(df['SMA'], label='SMA', color='purple', linestyle='--')
+            ax.plot(df['EMA'], label='EMA', color='green', linestyle='--')
+            ax.plot(df['BB_upper'], label='BB Sup', color='grey', linestyle=':')
+            ax.plot(df['BB_lower'], label='BB Inf', color='grey', linestyle=':')
+            ax.set_title(f"{moeda} - Preço com SMA/EMA/Bollinger")
+            ax.legend()
+            st.pyplot(fig)
+
+            # Botão download
+            buf = BytesIO()
+            fig.savefig(buf, format="png")
+            st.download_button(
+                label="💾 Guardar gráfico como imagem",
+                data=buf.getvalue(),
+                file_name=f"{moeda.replace('/', '_')}_grafico.png",
+                mime="image/png"
             )
-            enviar_telegram(mensagem)
-            estado_alertas[moeda] = alerta
 
-        # Gráfico completo
-        st.markdown("#### RSI, Preço, SMA, EMA, Bollinger")
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(df['close'], label='Preço', color='blue')
-        ax.plot(df['SMA'], label='SMA', color='purple', linestyle='--')
-        ax.plot(df['EMA'], label='EMA', color='green', linestyle='--')
-        ax.plot(df['BB_upper'], label='BB Sup', color='grey', linestyle=':')
-        ax.plot(df['BB_lower'], label='BB Inf', color='grey', linestyle=':')
-        ax.set_title(f"{moeda} - Preço com SMA/EMA/Bollinger")
-        ax.legend()
-        st.pyplot(fig)
+            st.divider()
 
-        # Botão de download da imagem
-        buf = BytesIO()
-        fig.savefig(buf, format="png")
-        st.download_button(
-            label="💾 Guardar gráfico como imagem",
-            data=buf.getvalue(),
-            file_name=f"{moeda.replace('/', '_')}_grafico.png",
-            mime="image/png"
-        )
+        except Exception as e:
+            st.error(f"Erro ao carregar {moeda}: {e}")
 
-        st.divider()
+    # Histórico
+    st.markdown("### 📜 Histórico de Alertas")
+    try:
+        df_log = pd.read_csv(LOG_PATH)
+        if filtro_alerta != "Todos":
+            df_log = df_log[df_log['Alerta'] == filtro_alerta]
+        st.dataframe(df_log.tail(20), use_container_width=True)
+        csv = df_log.to_csv(index=False).encode('utf-8')
+        st.download_button("📤 Exportar histórico CSV", csv, "alertas.csv", "text/csv")
+    except:
+        st.warning("Histórico não disponível.")
 
-    except Exception as e:
-        st.error(f"Erro ao carregar {moeda}: {e}")
+# Secção: Minhas Posições
+elif secao == "💼 Minhas Posições":
+    st.title("💼 Registo de Posições Pessoais")
 
-# Histórico
-st.markdown("### 📜 Histórico de Alertas")
-try:
-    df_log = pd.read_csv(LOG_PATH)
-    if filtro_alerta != "Todos":
-        df_log = df_log[df_log['Alerta'] == filtro_alerta]
-    st.dataframe(df_log.tail(20), use_container_width=True)
-    csv = df_log.to_csv(index=False).encode('utf-8')
-    st.download_button("📤 Exportar histórico CSV", csv, "alertas.csv", "text/csv")
-except:
-    st.warning("Histórico não disponível.")
+    with st.form("form_nova_posicao"):
+        moeda = st.text_input("Moeda (ex: SOL/USDT)")
+        montante = st.number_input("Montante investido (€)", min_value=0.0)
+        preco = st.number_input("Preço de entrada (USDT)", min_value=0.0)
+        submeter = st.form_submit_button("Guardar")
+
+        if submeter and moeda and montante and preco:
+            nova = {
+                "moeda": moeda.upper(),
+                "montante": montante,
+                "preco_entrada": preco,
+                "data": datetime.now().strftime("%Y-%m-%d %H:%M")
+            }
+            posicoes = carregar_posicoes()
+            posicoes.append(nova)
+            guardar_posicoes(posicoes)
+            st.success("✅ Posição registada com sucesso!")
+
+    st.subheader("📋 Posições Atuais")
+    posicoes = carregar_posicoes()
+    if posicoes:
+        st.table(posicoes)
+    else:
+        st.info("Nenhuma posição registada.")

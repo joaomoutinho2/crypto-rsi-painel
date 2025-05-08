@@ -3,12 +3,15 @@ import ccxt
 import pandas as pd
 import requests
 import os
+import json
 from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.volatility import BollingerBands
+from flask import Flask
+import threading
 
-# ⚙️ Configs (Render usa variáveis de ambiente)
+# ⚙️ Variáveis de ambiente (Render)
 from config import MOEDAS, TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
 # 📤 Telegram
@@ -22,13 +25,24 @@ def enviar_telegram(mensagem):
     except Exception as e:
         print("❌ Exceção Telegram:", e)
 
-# 📊 Ligação à exchange
+# 📁 Carregar moedas registadas
+def carregar_moedas_investidas():
+    try:
+        with open("posicoes.json", "r") as f:
+            dados = json.load(f)
+            return list(set(p["moeda"] for p in dados))
+    except:
+        return []
+
+# 📊 Exchange
 exchange = ccxt.kucoin()
 estado_alertas = {}
 ultimo_resumo = {}
 INTERVALO_RESUMO_MINUTOS = 60
+INTERVALO_RESUMO_HORAS = 2
 
-def analisar_moeda(moeda):
+# 🔍 Análise técnica
+def analisar_moeda(moeda, forcar_envio=False):
     try:
         candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
         df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -93,16 +107,14 @@ def analisar_moeda(moeda):
             f"{analise}"
         )
 
-        if moeda not in estado_alertas or alerta != estado_alertas[moeda]:
+        if forcar_envio:
+            enviar_telegram("🕒 *Atualização 2h das posições*\n" + mensagem)
+        elif moeda not in estado_alertas or alerta != estado_alertas[moeda]:
             enviar_telegram("🔔 *SINAL MUDOU*\n" + mensagem)
             estado_alertas[moeda] = alerta
 
         agora = datetime.now()
-        if (
-            moeda not in ultimo_resumo
-            or agora - ultimo_resumo[moeda] > timedelta(minutes=INTERVALO_RESUMO_MINUTOS)
-        ):
-            enviar_telegram("🕒 *Atualização horária*\n" + mensagem)
+        if forcar_envio:
             ultimo_resumo[moeda] = agora
 
     except Exception as e:
@@ -112,21 +124,30 @@ def analisar_moeda(moeda):
 def iniciar_bot():
     print("✅ Bot RSI com alertas iniciado...")
     while True:
+        # Alertas gerais
         for moeda in MOEDAS:
             analisar_moeda(moeda)
+
+        # Atualizações 2/2h das posições registadas
+        moedas_investidas = carregar_moedas_investidas()
+        for moeda in moedas_investidas:
+            agora = datetime.now()
+            if (
+                moeda not in ultimo_resumo
+                or agora - ultimo_resumo[moeda] > timedelta(hours=INTERVALO_RESUMO_HORAS)
+            ):
+                analisar_moeda(moeda, forcar_envio=True)
+
         time.sleep(300)
 
-# 🌐 Servidor Flask para manter o Render ativo
-from flask import Flask
-import threading
-
+# 🌐 Servidor Flask (Render)
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "✅ Bot RSI ativo no Render e pronto a enviar alertas."
 
-# ▶️ Iniciar o bot + o Flask
+# ▶️ Iniciar tudo
 if __name__ == "__main__":
     threading.Thread(target=iniciar_bot).start()
     app.run(host="0.0.0.0", port=10000)
