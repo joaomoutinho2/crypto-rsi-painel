@@ -15,16 +15,24 @@ from telegram_alert import enviar_telegram
 
 # 📁 Base de dados local
 FICHEIRO_POSICOES = "posicoes.json"
+FICHEIRO_ESTRATEGIAS = "estrategia_log.csv"
 
 def carregar_posicoes():
     if not os.path.exists(FICHEIRO_POSICOES):
         return []
-    with open(FICHEIRO_POSICOES, "r") as f:
-        return json.load(f)
+    try:
+        with open(FICHEIRO_POSICOES, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar posições: {e}")
+        return []
 
 def guardar_posicoes(posicoes):
-    with open(FICHEIRO_POSICOES, "w") as f:
-        json.dump(posicoes, f, indent=2)
+    try:
+        with open(FICHEIRO_POSICOES, "w") as f:
+            json.dump(posicoes, f, indent=2)
+    except Exception as e:
+        st.error(f"❌ Erro ao guardar posições: {e}")
 
 # ⚙️ Configuração geral
 st.set_page_config(page_title="Painel RSI", layout="wide")
@@ -38,10 +46,9 @@ exchanges_disponiveis = ['kucoin', 'coinbase', 'kraken']
 exchange_nome = st.sidebar.selectbox("🌐 Exchange", exchanges_disponiveis, index=0)
 filtro_alerta = st.sidebar.radio("⚠️ Tipo de alerta a mostrar", ["Todos", "ENTRADA", "SAÍDA", "NEUTRO"])
 
-# 🔽 Menu de secções (AQUI ESTAVA A FALTAR!)
+# 🔽 Menu de secções
 st.sidebar.markdown("---")
 secao = st.sidebar.radio("📂 Secções", ["📊 Painel RSI", "💼 Minhas Posições", "📈 Estratégias"])
-
 
 # 🔄 Atualização automática
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
