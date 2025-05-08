@@ -148,39 +148,18 @@ def analisar_moeda(moeda, forcar_envio=False):
         print(f"❌ Erro ao processar {moeda}: {e}")
 
 # 🔁 Loop principal
-def iniciar_bot():
-    print("✅ Estratégia automática iniciada...")
-
-    while True:
-        try:
-            # 📥 Buscar todos os pares USDT disponíveis na KuCoin
-            mercados = exchange.load_markets()
-            usdt_pairs = [symbol for symbol in mercados if symbol.endswith("/USDT")]
-
-            for moeda in usdt_pairs:
-                avaliar_estrategia(moeda)
-
-            # 🕒 Atualizações regulares das tuas posições
-            moedas_investidas = carregar_moedas_investidas()
-            agora = datetime.now()
-            for moeda in moedas_investidas:
-                if (
-                    moeda not in ultimo_resumo
-                    or agora - ultimo_resumo[moeda] > timedelta(hours=2)
-                ):
-                    analisar_moeda(moeda, forcar_envio=True)
-
-        except Exception as e:
-            print("❌ Erro no ciclo principal:", e)
-
-        print("⏳ A aguardar 5 minutos...")
-        time.sleep(300)
-
 def avaliar_estrategia(moeda):
     try:
+        # 🛑 Ignorar moedas com pouco volume (ex: < 500.000 USDT nas últimas 24h)
+        ticker = exchange.fetch_ticker(moeda)
+        if ticker['quoteVolume'] < 500_000:
+            return  # ignora moeda com volume baixo
+
+        # 📈 Obter candles
         candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
         df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
+        # 🧠 Indicadores técnicos
         df['RSI'] = RSIIndicator(close=df['close'], window=14).rsi()
         df['SMA'] = SMAIndicator(close=df['close'], window=14).sma_indicator()
         df['EMA'] = EMAIndicator(close=df['close'], window=14).ema_indicator()
@@ -194,6 +173,7 @@ def avaliar_estrategia(moeda):
         df['BB_upper'] = bb.bollinger_hband()
         df['BB_lower'] = bb.bollinger_lband()
 
+        # 🔍 Últimos valores
         preco = df['close'].iloc[-1]
         rsi = df['RSI'].iloc[-1]
         sma = df['SMA'].iloc[-1]
@@ -208,34 +188,32 @@ def avaliar_estrategia(moeda):
         sinais_compra = 0
         sinais_venda = 0
 
-        # RSI
+        # 🧠 Estratégia
         if rsi < 30: sinais_compra += 1
         elif rsi > 70: sinais_venda += 1
 
-        # EMA/SMA
         if preco > ema: sinais_compra += 1
         elif preco < ema: sinais_venda += 1
 
         if preco > sma: sinais_compra += 1
         elif preco < sma: sinais_venda += 1
 
-        # MACD
         if macd_val > macd_sig: sinais_compra += 1
         elif macd_val < macd_sig: sinais_venda += 1
 
-        # Bollinger
         if preco < bb_inf: sinais_compra += 1
         elif preco > bb_sup: sinais_venda += 1
 
-        # Volume
         if vol > vol_med:
             sinais_compra += 1
-            sinais_venda += 1  # volume alto confirma os dois
+            sinais_venda += 1
 
         total_sinais = max(sinais_compra, sinais_venda)
 
-        if total_sinais >= 3:
+        # ⚠️ Só enviar alerta se 4 ou mais sinais confirmarem
+        if total_sinais >= 4:
             direcao = "ENTRADA" if sinais_compra > sinais_venda else "SAÍDA"
+
             mensagem = (
                 f"📢 Estratégia Detetada - {moeda}\n"
                 f"💰 Preço: {preco:.2f} USDT\n"
@@ -246,8 +224,10 @@ def avaliar_estrategia(moeda):
                 f"✅ Sinais de {'compra' if direcao == 'ENTRADA' else 'venda'}: {total_sinais}/6\n"
                 f"⚠️ Recomendação: {direcao}"
             )
+
             enviar_telegram(mensagem)
 
+            # 📝 Guardar no log
             registar_estrategia(
                 moeda, direcao, preco, total_sinais,
                 rsi, sma, ema, macd_val, macd_sig, vol, vol_med, bb_inf, bb_sup
@@ -255,6 +235,7 @@ def avaliar_estrategia(moeda):
 
     except Exception as e:
         print(f"❌ Erro na avaliação de {moeda}: {e}")
+
 
 # 🌐 Servidor Flask (Render)
 app = Flask(__name__)
