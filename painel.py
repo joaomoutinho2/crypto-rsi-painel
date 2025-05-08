@@ -152,12 +152,7 @@ elif secao == "💼 Minhas Posições":
     # 📥 Formulário para adicionar nova posição
     with st.form("form_nova_posicao"):
         st.subheader("➕ Adicionar Nova Posição")
-        # Carregar mercados disponíveis (só pares com USDT)
-        mercados_disponiveis = exchange.load_markets()
-        pares_usdt = sorted([m for m in mercados_disponiveis if m.endswith("/USDT")])
-
-        moeda = st.selectbox("Moeda (par com USDT)", pares_usdt)
-
+        moeda = st.text_input("Moeda (ex: SOL/USDT)")
         montante = st.number_input("Montante investido (€)", min_value=0.0)
         preco = st.number_input("Preço de entrada (USDT)", min_value=0.0)
         objetivo = st.number_input("Objetivo de lucro (%)", min_value=0.0, value=10.0, step=0.5)
