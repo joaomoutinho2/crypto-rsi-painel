@@ -11,46 +11,33 @@ from ta.volatility import BollingerBands
 from flask import Flask
 import threading
 from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-import schedule
-import logging
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logging.info("Bot iniciado.")
 
 FICHEIRO_POSICOES = "posicoes.json"
-
 QUEDA_LIMITE = 0.95
 OBJETIVO_PADRAO = 10
 
-# 📤 Enviar alerta para o Telegram
+# Enviar mensagem para o Telegram
 def enviar_telegram(mensagem):
-    if len(mensagem) > 4096:  # Limite de caracteres do Telegram
+    if len(mensagem) > 4096:
         mensagem = mensagem[:4093] + "..."
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
     try:
-        response = requests.post(url, data=data)
-        if response.status_code != 200:
-            logging.error(f"❌ Erro Telegram: {response.text}")
+        requests.post(url, data=data)
     except Exception as e:
-        logging.error(f"❌ Exceção Telegram: {e}")
+        print("Erro Telegram:", e)
 
-# 📁 Carregar posições registadas
+# Carregar posições pessoais
 def carregar_posicoes():
     if not os.path.exists(FICHEIRO_POSICOES):
         return []
     with open(FICHEIRO_POSICOES, "r") as f:
         try:
-            posicoes = json.load(f)
-            # Validação básica
-            if not isinstance(posicoes, list):
-                raise ValueError("Formato inválido no arquivo de posições.")
-            return posicoes
-        except Exception as e:
-            print(f"❌ Erro ao carregar posições: {e}")
+            return json.load(f)
+        except:
             return []
 
-# 🔍 Análise de oportunidades
+# Analisar mercado e escolher até 5 oportunidades fortes
 def analisar_oportunidades(exchange, moedas, limite=5):
     oportunidades = []
     for moeda in moedas:
@@ -63,7 +50,6 @@ def analisar_oportunidades(exchange, moedas, limite=5):
             df["MACD_signal"] = MACD(close=df["close"]).macd_signal()
             bb = BollingerBands(close=df["close"])
             df["BB_lower"] = bb.bollinger_lband()
-            df["BB_upper"] = bb.bollinger_hband()
 
             rsi = df["RSI"].iloc[-1]
             preco = df["close"].iloc[-1]
@@ -71,7 +57,6 @@ def analisar_oportunidades(exchange, moedas, limite=5):
             macd = df["MACD"].iloc[-1]
             macd_sig = df["MACD_signal"].iloc[-1]
             bb_inf = df["BB_lower"].iloc[-1]
-            bb_sup = df["BB_upper"].iloc[-1]
 
             sinais = 0
             if rsi < 30: sinais += 1
@@ -81,14 +66,13 @@ def analisar_oportunidades(exchange, moedas, limite=5):
 
             if sinais >= 3:
                 oportunidades.append((moeda, preco, rsi, sinais))
-        except Exception as e:
-            print(f"❌ Erro: {e}")
+        except:
             continue
 
     oportunidades.sort(key=lambda x: -x[3])
     return oportunidades[:limite]
 
-# 🔄 Verificar posições registadas
+# Verificar posições pessoais
 def acompanhar_posicoes(exchange, posicoes):
     for pos in posicoes:
         try:
@@ -104,24 +88,26 @@ def acompanhar_posicoes(exchange, posicoes):
 
             if preco_atual < preco_entrada * QUEDA_LIMITE:
                 enviar_telegram(
-    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?\n"
-Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
+                    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?\n"
+                    f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
+                )
             elif percent >= objetivo:
                 enviar_telegram(
-    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!\n"
-Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
+                    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!\n"
+                    f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
+                )
         except Exception as e:
-            print(f"❌ Erro: {e}")
-            continue
+            print("Erro posição:", e)
 
-# 🔁 Ciclo principal
+# Ciclo principal
 def iniciar_bot():
     exchange = ccxt.kucoin()
     try:
         exchange.load_markets()
     except Exception as e:
-        logging.error(f"❌ Erro ao carregar mercados: {e}")
+        print("Erro a carregar mercados:", e)
         return
+
     moedas = [s for s in exchange.symbols if "/USDT" in s and "UP/" not in s and "DOWN/" not in s]
 
     while True:
@@ -129,8 +115,9 @@ def iniciar_bot():
         oportunidades = analisar_oportunidades(exchange, moedas)
         for moeda, preco, rsi, sinais in oportunidades:
             enviar_telegram(
-    f"🚨 Oportunidade: {moeda}\n"
-💰 Preço: {preco:.2f} | RSI: {rsi:.2f} | Força: {sinais}/4")
+                f"🚨 Oportunidade: {moeda}\n"
+                f"💰 Preço: {preco:.2f} | RSI: {rsi:.2f} | Força: {sinais}/4"
+            )
 
         posicoes = carregar_posicoes()
         acompanhar_posicoes(exchange, posicoes)
@@ -138,24 +125,13 @@ def iniciar_bot():
         print("⏱️ A aguardar 1 hora...")
         time.sleep(3600)
 
-def executar_bot():
-    # Código do bot
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Executando ciclo do bot...")
-
-schedule.every(1).hours.do(executar_bot)
-
-while True:
-    schedule.run_pending()
-    time.sleep(1)
-
-# 🌐 Servidor Flask (Render)
+# API Render (para manter ativo)
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "✅ Bot RSI filtrado a correr no Render."
+    return "✅ Bot RSI está a correr."
 
-# ▶️ Iniciar bot e webserver
 if __name__ == "__main__":
     threading.Thread(target=iniciar_bot).start()
     app.run(host="0.0.0.0", port=10000)
