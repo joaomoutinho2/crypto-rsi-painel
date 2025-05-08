@@ -73,18 +73,12 @@ def analisar_oportunidades(exchange, moedas, limite=5):
             if sinais >= 3 and estado_alertas.get(moeda) != alerta_hash:
                 estado_alertas[moeda] = alerta_hash
                 mensagem = (
-                    f"🚨 Oportunidade: {moeda}
-"
-                    f"💰 Preço: {preco:.2f} USDT
-"
-                    f"📊 RSI: {rsi:.2f} | EMA: {ema:.2f}
-"
-                    f"📈 MACD: {macd:.2f} / Sinal: {macd_sig:.2f}
-"
-                    f"📉 Volume: {vol:.2f} (média: {vol_med:.2f})
-"
-                    f"🎯 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]
-"
+                    f"🚨 Oportunidade: {moeda}"
+                    f"💰 Preço: {preco:.2f} USDT"
+                    f"📊 RSI: {rsi:.2f} | EMA: {ema:.2f}"
+                    f"📈 MACD: {macd:.2f} / Sinal: {macd_sig:.2f}"
+                    f"📉 Volume: {vol:.2f} (média: {vol_med:.2f})"
+                    f"🎯 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]"
                     f"⚙️ Força: {sinais}/4"
                 )
                 enviar_telegram(mensagem)
