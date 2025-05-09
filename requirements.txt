@@ -8,3 +8,5 @@ streamlit-autorefresh
 flask
 scikit-learn
 joblib
+firebase_admin
+google-cloud-firestore
