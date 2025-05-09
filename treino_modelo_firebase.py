@@ -5,12 +5,15 @@ from sklearn.metrics import classification_report, confusion_matrix, accuracy_sc
 import joblib
 from datetime import datetime
 from firebase_config import iniciar_firebase
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 # 🔥 Inicializar Firestore
 db = iniciar_firebase()
 
-# 📥 Ler dados reais do Firebase
-docs = db.collection("historico_previsoes").where("resultado", "!=", None).stream()
+# 📅 Ler dados reais do Firebase
+docs = db.collection("historico_previsoes").where(
+    filter=FieldFilter("resultado", "!=", None)
+).stream()
 registos = [doc.to_dict() for doc in docs if all(k in doc.to_dict() for k in ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position"])]
 
 df = pd.DataFrame(registos)
@@ -40,11 +43,11 @@ print(classification_report(y_test, y_pred))
 print("\n🧱 Matriz de Confusão:")
 print(confusion_matrix(y_test, y_pred))
 
-# 💾 Guardar modelo local
+# 📎 Guardar modelo local
 joblib.dump(modelo, "modelo_treinado.pkl")
 print("✅ Modelo guardado como modelo_treinado.pkl")
 
-# ☁️ Guardar metadados no Firestore
+# ☕️ Guardar metadados no Firestore
 resultado_doc = {
     "data_treino": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     "features": features,
