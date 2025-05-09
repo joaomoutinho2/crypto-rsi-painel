@@ -14,52 +14,49 @@ from streamlit_autorefresh import st_autorefresh
 from telegram_alert import enviar_telegram
 import firebase_admin
 from firebase_admin import credentials, firestore
-import os
-import json
-import firebase_admin
-from firebase_admin import credentials, firestore
 
-# Lê a variável de ambiente como string
-firebase_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
-with open("C:/Users/joao/OneDrive/Área de Trabalho/Programa_Investimento/firebase_key.json") as f:
-    firebase_dict = json.load(f)
-
-# Inicializa o Firebase com o dicionário
-cred = credentials.Certificate(firebase_dict)
-firebase_admin.initialize_app(cred)
-db = firestore.client()
-
-firebase_admin.initialize_app(cred)
+# Inicializa o Firebase apenas uma vez
+if not firebase_admin._apps:
+    cred = credentials.Certificate(st.secrets["firebase"])
+    firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 # 📁 Base de dados local
 FICHEIRO_POSICOES = "posicoes.json"
 FICHEIRO_ESTRATEGIAS = "estrategia_log.csv"
+FICHEIRO_HISTORICO = "historico_vendas.json"
 
+# Funções auxiliares
 def carregar_posicoes():
-    docs = db.collection("posicoes").stream()
-    return [doc.to_dict() for doc in docs]
+    try:
+        docs = db.collection("posicoes").stream()
+        return [doc.to_dict() for doc in docs]
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar posições do Firestore: {e}")
+        return []
 
 def guardar_posicoes(posicoes):
-    # Apagar todas as posições antigas
-    for doc in db.collection("posicoes").stream():
-        doc.reference.delete()
-    # Adicionar as novas
-    for pos in posicoes:
-        db.collection("posicoes").add(pos)
+    try:
+        # Apagar todas as posições antigas
+        for doc in db.collection("posicoes").stream():
+            doc.reference.delete()
+        # Adicionar as novas
+        for pos in posicoes:
+            db.collection("posicoes").add(pos)
+    except Exception as e:
+        st.error(f"❌ Erro ao guardar posições no Firestore: {e}")
 
 def guardar_venda(registro):
-    FICHEIRO_HISTORICO = "historico_vendas.json"
-    historico = []
-    if os.path.exists(FICHEIRO_HISTORICO):
-        with open(FICHEIRO_HISTORICO, "r") as f:
-            try:
+    try:
+        historico = []
+        if os.path.exists(FICHEIRO_HISTORICO):
+            with open(FICHEIRO_HISTORICO, "r") as f:
                 historico = json.load(f)
-            except:
-                historico = []
-    historico.append(registro)
-    with open(FICHEIRO_HISTORICO, "w") as f:
-        json.dump(historico, f, indent=2)
+        historico.append(registro)
+        with open(FICHEIRO_HISTORICO, "w") as f:
+            json.dump(historico, f, indent=2)
+    except Exception as e:
+        st.error(f"❌ Erro ao guardar histórico de vendas: {e}")
 
 # ⚙️ Configuração geral
 st.set_page_config(page_title="Painel RSI", layout="wide")
@@ -83,9 +80,8 @@ st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
 # 📊 PAINEL RSI
 # ============================
 if secao == "📊 Painel RSI":
+    st.title("📊 Painel RSI")
     exchange = getattr(ccxt, exchange_nome)()
-    estado_alertas = {}
-
     for moeda in MOEDAS:
         try:
             candles = exchange.fetch_ohlcv(moeda, timeframe=timeframe, limit=100)
@@ -179,41 +175,28 @@ if secao == "📊 Painel RSI":
 # ============================
 elif secao == "💼 Minhas Posições":
     st.title("💼 Registo de Posições Pessoais")
-
     posicoes = carregar_posicoes()
 
     st.subheader("➕ Adicionar Nova Posição")
-
     moeda = st.text_input("Moeda (ex: SOL/USDT)").upper()
     montante = st.number_input("Montante investido (€)", min_value=0.0)
     preco = st.number_input("Preço de entrada (USDT)", min_value=0.0)
     objetivo = st.number_input("Objetivo de lucro (%)", min_value=0.0, value=10.0, step=0.5)
 
-    exchange_validacao = ccxt.kucoin()  # Podes mudar conforme necessidade
-    mercados = exchange_validacao.load_markets()
-    confirmacao = False
-
-    if moeda in mercados:
-        st.success(f"🔍 Encontrado: {moeda} na exchange Kucoin.")
-        confirmacao = True
-    elif moeda:
-        st.error(f"❌ Moeda '{moeda}' não encontrada na Kucoin.")
-
     with st.form("form_nova_posicao"):
-        if confirmacao:
-            submeter = st.form_submit_button("Guardar")
-            if submeter and moeda and montante and preco:
-                nova = {
-                    "moeda": moeda,
-                    "montante": montante,
-                    "preco_entrada": preco,
-                    "objetivo": objetivo,
-                    "data": datetime.now().strftime("%Y-%m-%d %H:%M")
-                }
-                posicoes.append(nova)
-                guardar_posicoes(posicoes)
-                st.success("✅ Posição registada com sucesso!")
-                st.rerun()
+        submeter = st.form_submit_button("Guardar")
+        if submeter and moeda and montante > 0 and preco > 0:
+            nova = {
+                "moeda": moeda,
+                "montante": montante,
+                "preco_entrada": preco,
+                "objetivo": objetivo,
+                "data": datetime.now().strftime("%Y-%m-%d %H:%M")
+            }
+            posicoes.append(nova)
+            guardar_posicoes(posicoes)
+            st.success("✅ Posição registada com sucesso!")
+            st.rerun()
 
     st.markdown("---")
     st.subheader("📊 Posições Atuais com Lucro/Prejuízo")
