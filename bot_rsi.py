@@ -13,17 +13,23 @@ from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
 from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 import streamlit as st
-from firebase_config import iniciar_firebase
 
-# Inicializar Firestore
+from firebase_config import iniciar_firebase
+from treino_modelo_firebase import modelo  # ✅ modelo treinado automaticamente
+
+# ✅ Verificar se o modelo foi carregado com sucesso
+if modelo is None:
+    print("❌ Erro ao treinar ou carregar o modelo. A sair...")
+    exit()
+
+# ✅ Inicializar Firestore
 db = iniciar_firebase()
 
 FICHEIRO_POSICOES = "posicoes.json"
-MODELO_PATH = "modelo_treinado.pkl"
 QUEDA_LIMITE = 0.95
 OBJETIVO_PADRAO = 10
 INTERVALO_RESUMO_HORAS = 2
-MAX_ALERTAS_POR_CICLO = 5  # Limite de alertas por ciclo
+MAX_ALERTAS_POR_CICLO = 5
 
 ULTIMO_RESUMO = datetime.now() - timedelta(hours=2)
 
@@ -160,7 +166,6 @@ def analisar_oportunidades(exchange, moedas, modelo):
 
     for registo in oportunidades_ordenadas[:MAX_ALERTAS_POR_CICLO]:
         enviar_telegram(registo["Mensagem"])
-
 
 def acompanhar_posicoes(exchange, posicoes, forcar_resumo=False):
     global ULTIMO_RESUMO
