@@ -6,3 +6,5 @@ requests
 streamlit
 streamlit-autorefresh
 flask
+scikit-learn
+joblib
