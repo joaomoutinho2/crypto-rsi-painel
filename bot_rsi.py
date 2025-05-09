@@ -16,6 +16,7 @@ from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
 FICHEIRO_POSICOES = "posicoes.json"
 MODELO_PATH = "modelo_treinado.pkl"
+FICHEIRO_PREVISOES = "historico_previsoes.csv"
 QUEDA_LIMITE = 0.95
 OBJETIVO_PADRAO = 10
 ULTIMO_RESUMO = datetime.now() - timedelta(hours=2)
@@ -31,6 +32,11 @@ def enviar_telegram(mensagem):
         print("🔁 Código:", response.status_code)
     except Exception as e:
         print("❌ Erro ao enviar:", e)
+
+def gravar_previsao(registo):
+    df = pd.DataFrame([registo])
+    existe = os.path.exists(FICHEIRO_PREVISOES)
+    df.to_csv(FICHEIRO_PREVISOES, mode="a", header=not existe, index=False)
 
 def carregar_posicoes():
     if not os.path.exists(FICHEIRO_POSICOES):
@@ -74,7 +80,22 @@ def analisar_oportunidades(exchange, moedas, modelo):
                 "BB_position": (preco - bb_inf) / (bb_sup - bb_inf) if bb_sup > bb_inf else 0.5
             }])
 
-            if modelo.predict(entrada)[0]:
+            previsao = modelo.predict(entrada)[0]
+
+            registo = {
+                "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Moeda": moeda,
+                "RSI": rsi,
+                "EMA_diff": (preco - ema) / ema,
+                "MACD_diff": macd_val - macd_sig,
+                "Volume_relativo": vol / vol_med if vol_med else 1,
+                "BB_position": (preco - bb_inf) / (bb_sup - bb_inf) if bb_sup > bb_inf else 0.5,
+                "Previsao": int(previsao)
+            }
+
+            gravar_previsao(registo)
+
+            if previsao:
                 mensagem = (
                     f"🚨 Oportunidade: {moeda}\n"
                     f"💰 Preço: {preco:.2f} USDT\n"
@@ -101,7 +122,7 @@ def acompanhar_posicoes(exchange, posicoes, forcar_resumo=False):
             preco_atual = ticker["last"]
             preco_entrada = pos["preco_entrada"]
             investido = pos["montante"]
-            objetivo = pos.get("objetivo", OBJETIVO_PADRAO)
+            objetivo = pos.get("objetivo", 10)
             valor_atual = preco_atual * (investido / preco_entrada)
             lucro = valor_atual - investido
             percent = (lucro / investido) * 100
@@ -139,7 +160,7 @@ def iniciar_bot():
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Bot RSI com modelo e debug está ativo."
+    return "✅ Bot RSI com modelo e gravação de previsões ativo."
 
 if __name__ == "__main__":
     threading.Thread(target=iniciar_bot).start()
