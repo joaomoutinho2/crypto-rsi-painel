@@ -18,10 +18,12 @@ import streamlit as st
 from firebase_admin import credentials, initialize_app
 
 if not firebase_admin._apps:
-    # Converter st.secrets para dict com quebras reais na private_key
     firebase_dict = dict(st.secrets["firebase"])
-    firebase_dict["private_key"] = firebase_dict["private_key"].replace("\\n", "\n")
-
+    
+    # Só aplicar replace se for necessário (ou seja, se "\\n" estiver mesmo presente)
+    if "\\n" in firebase_dict["private_key"]:
+        firebase_dict["private_key"] = firebase_dict["private_key"].replace("\\n", "\n")
+    
     cred = credentials.Certificate(firebase_dict)
     firebase_admin.initialize_app(cred)
 
