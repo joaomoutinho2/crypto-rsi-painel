@@ -1,4 +1,3 @@
-
 import time
 import ccxt
 import pandas as pd
@@ -13,6 +12,7 @@ from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
 from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+import streamlit as st
 
 FICHEIRO_POSICOES = "posicoes.json"
 MODELO_PATH = "modelo_treinado.pkl"
@@ -39,6 +39,13 @@ def gravar_previsao(registo):
     df = pd.DataFrame([registo])
     existe = os.path.exists(FICHEIRO_PREVISOES)
     df.to_csv(FICHEIRO_PREVISOES, mode="a", header=not existe, index=False)
+
+def guardar_posicoes(posicoes):
+    try:
+        with open(FICHEIRO_POSICOES, "w") as f:
+            json.dump(posicoes, f, indent=2)
+    except Exception as e:
+        print(f"❌ Erro ao guardar posições: {e}")
 
 def carregar_posicoes():
     if not os.path.exists(FICHEIRO_POSICOES):
@@ -181,3 +188,35 @@ def home():
 if __name__ == "__main__":
     threading.Thread(target=iniciar_bot).start()
     app.run(host="0.0.0.0", port=10000)
+
+# Carregar posições existentes
+posicoes = carregar_posicoes()
+
+# Formulário para registrar uma nova posição
+st.title("💼 Registrar Nova Posição")
+with st.form("form_nova_posicao"):
+    moeda = st.text_input("Moeda (ex: BTC/USDT)")
+    montante = st.number_input("Montante investido (€)", min_value=0.0, step=0.01)
+    preco_entrada = st.number_input("Preço de entrada (USDT)", min_value=0.0, step=0.01)
+    objetivo = st.number_input("Objetivo de lucro (%)", min_value=0.0, step=0.1, value=10.0)
+    submeter = st.form_submit_button("Registrar Posição")
+
+    if submeter:
+        # Validar os dados antes de salvar
+        if not moeda or montante <= 0 or preco_entrada <= 0:
+            st.error("❌ Todos os campos devem ser preenchidos corretamente.")
+        else:
+            # Criar nova posição
+            nova_posicao = {
+                "moeda": moeda,
+                "montante": montante,
+                "preco_entrada": preco_entrada,
+                "objetivo": objetivo,
+                "data": datetime.now().strftime("%Y-%m-%d %H:%M")
+            }
+            # Adicionar nova posição à lista
+            posicoes.append(nova_posicao)
+            # Salvar no arquivo JSON
+            guardar_posicoes(posicoes)
+            st.success("✅ Posição registrada com sucesso!")
+            st.rerun()  # Atualizar a página
