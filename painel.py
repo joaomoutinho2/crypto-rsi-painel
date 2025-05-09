@@ -49,6 +49,14 @@ def carregar_historico_vendas():
         st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
         return []
 
+def carregar_modelo_treinado():
+    try:
+        docs = db.collection("modelos_treinados").order_by("data_treino", direction=firestore.Query.DESCENDING).limit(1).stream()
+        return next(docs, None)
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar dados do modelo treinado: {e}")
+        return None
+
 # ============================
 # ⚙️ Configuração geral
 # ============================
@@ -62,9 +70,32 @@ exchanges_disponiveis = ['kucoin', 'coinbase', 'kraken']
 exchange_nome = st.sidebar.selectbox("🌐 Exchange", exchanges_disponiveis, index=0)
 
 st.sidebar.markdown("---")
-secao = st.sidebar.radio("📂 Secções", ["📊 Painel RSI", "💼 Minhas Posições", "📈 Estratégias", "📜 Histórico de Vendas"])
+secao = st.sidebar.radio("📂 Secções", ["📊 Painel RSI", "💼 Minhas Posições", "📈 Estratégias", "📜 Histórico de Vendas", "📊 Último Modelo Treinado"])
 
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
+
+# ============================
+# 📊 ÚLTIMO MODELO TREINADO
+# ============================
+if secao == "📊 Último Modelo Treinado":
+    st.title("📊 Último Modelo Treinado com Dados Reais")
+    doc = carregar_modelo_treinado()
+    if doc:
+        modelo = doc.to_dict()
+        st.markdown(f"**🧠 Modelo:** {modelo['modelo']}")
+        st.markdown(f"**📅 Data de treino:** {modelo['data_treino']}")
+        st.markdown(f"**🎯 Acurácia:** {modelo['acuracia']:.2%}")
+
+        st.markdown("---")
+        st.subheader("📊 Relatório de Classificação")
+        relatorio = modelo.get("relatorio", {})
+        st.dataframe(pd.DataFrame(relatorio).T)
+
+        st.subheader("🧱 Matriz de Confusão")
+        matriz = pd.DataFrame(modelo.get("matriz_confusao", []), columns=["Previsto Negativo", "Previsto Positivo"], index=["Real Negativo", "Real Positivo"])
+        st.dataframe(matriz)
+    else:
+        st.warning("Nenhum modelo treinado disponível no momento.")
 
 # ============================
 # 📊 PAINEL RSI
