@@ -19,18 +19,9 @@ import os
 import json
 import firebase_admin
 from firebase_admin import credentials, firestore
+from firebase_config import iniciar_firebase
 
-# Lê a variável de ambiente como string
-firebase_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
-firebase_dict = json.loads(firebase_json)
-
-# Inicializa o Firebase com o dicionário
-cred = credentials.Certificate(firebase_dict)
-firebase_admin.initialize_app(cred)
-db = firestore.client()
-
-firebase_admin.initialize_app(cred)
-db = firestore.client()
+db = iniciar_firebase(usando_secrets=True, secrets=st.secrets)
 
 
 FICHEIRO_POSICOES = "posicoes.json"
@@ -54,10 +45,18 @@ def enviar_telegram(mensagem):
     except Exception as e:
         print("❌ Erro ao enviar:", e)
 
-def gravar_previsao(registo):
-    df = pd.DataFrame([registo])
-    existe = os.path.exists(FICHEIRO_PREVISOES)
-    df.to_csv(FICHEIRO_PREVISOES, mode="a", header=not existe, index=False)
+def guardar_previsao_firestore(moeda, rsi, ema_diff, motivo):
+    db.collection("historico_previsoes").add({
+        "moeda": moeda,
+        "data": datetime.utcnow(),
+        "RSI": rsi,
+        "EMA_diff": ema_diff,
+        "resultado": None,
+        "variacao": None,
+        "preco_atual": None,
+        "motivo": motivo
+    })
+
 
 def guardar_posicoes(posicoes):
     # Apagar todas as posições antigas
