@@ -18,10 +18,14 @@ import streamlit as st
 from firebase_admin import credentials, initialize_app
 
 if not firebase_admin._apps:
-    cred = credentials.Certificate(st.secrets["firebase"])
-    firebase_admin.initialize_app(cred)
-db = firestore.client()
+    # Converter st.secrets para dict com quebras reais na private_key
+    firebase_dict = dict(st.secrets["firebase"])
+    firebase_dict["private_key"] = firebase_dict["private_key"].replace("\\n", "\n")
 
+    cred = credentials.Certificate(firebase_dict)
+    firebase_admin.initialize_app(cred)
+
+db = firestore.client()
 
 # 📁 Base de dados local
 FICHEIRO_POSICOES = "posicoes.json"
