@@ -41,6 +41,22 @@ def enviar_telegram(mensagem):
 def guardar_previsao_firestore(registo):
     db.collection("historico_previsoes").add(registo)
 
+def guardar_estrategia_firestore(moeda, direcao, preco, sinais, rsi, variacao):
+    estrategia = {
+        "Moeda": moeda,
+        "Direcao": direcao,
+        "Preço": preco,
+        "Sinais": sinais,
+        "RSI": rsi,
+        "Variação (%)": variacao,
+        "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    try:
+        db.collection("estrategias").add(estrategia)
+        print(f"✅ Estratégia registada para {moeda}")
+    except Exception as e:
+        print(f"❌ Erro ao guardar estratégia: {e}")
+
 def guardar_posicoes(posicoes):
     for doc in db.collection("posicoes").stream():
         doc.reference.delete()
@@ -102,6 +118,24 @@ def analisar_oportunidades(exchange, moedas, modelo):
             guardar_previsao_firestore(registo)
 
             if previsao:
+                sinais = [
+                    "RSI < 30" if rsi < 30 else None,
+                    "preço > EMA" if preco > ema else None,
+                    "MACD > sinal" if macd_val > macd_sig else None,
+                    "volume alto" if vol > vol_med else None,
+                    "fora da BB inferior" if preco < bb_inf else None
+                ]
+                sinais_confirmados = list(filter(None, sinais))
+
+                guardar_estrategia_firestore(
+                    moeda=moeda,
+                    direcao="ENTRADA",
+                    preco=preco,
+                    sinais=", ".join(sinais_confirmados),
+                    rsi=rsi,
+                    variacao=(preco - ema) / ema * 100
+                )
+
                 registo["Mensagem"] = (
                     f"🚨 Oportunidade: {moeda}\n"
                     f"💰 Preço: {preco:.2f} USDT\n"
@@ -126,6 +160,7 @@ def analisar_oportunidades(exchange, moedas, modelo):
 
     for registo in oportunidades_ordenadas[:MAX_ALERTAS_POR_CICLO]:
         enviar_telegram(registo["Mensagem"])
+
 
 def acompanhar_posicoes(exchange, posicoes, forcar_resumo=False):
     global ULTIMO_RESUMO
