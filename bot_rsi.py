@@ -119,7 +119,7 @@ def analisar_oportunidades(exchange, moedas, modelo):
                 "Previsao": int(previsao)
             }
 
-            gravar_previsao(registo)
+            guardar_previsao_firestore(registo)
 
             if previsao:
                 registo["Mensagem"] = (
