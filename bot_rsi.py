@@ -4,18 +4,17 @@ import pandas as pd
 import requests
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
-from flask import Flask
-import threading
 from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
 FICHEIRO_POSICOES = "posicoes.json"
 QUEDA_LIMITE = 0.95
 OBJETIVO_PADRAO = 10
-estado_alertas = {}
+ULTIMO_RESUMO = datetime.now() - timedelta(hours=2)
+INTERVALO_RESUMO_HORAS = 2
 
 def enviar_telegram(mensagem):
     print("📤 Enviar para Telegram:")
@@ -25,11 +24,8 @@ def enviar_telegram(mensagem):
     try:
         response = requests.post(url, data=data)
         print("🔁 Código:", response.status_code)
-        print("📨 Resposta:", response.text)
-        if response.status_code != 200:
-            print("❌ Erro ao enviar para Telegram.")
     except Exception as e:
-        print("❌ Exceção ao enviar:", e)
+        print("❌ Erro ao enviar:", e)
 
 def carregar_posicoes():
     if not os.path.exists(FICHEIRO_POSICOES):
@@ -41,6 +37,7 @@ def carregar_posicoes():
         return []
 
 def analisar_oportunidades(exchange, moedas):
+    oportunidades = []
     for moeda in moedas:
         try:
             candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
@@ -69,48 +66,78 @@ def analisar_oportunidades(exchange, moedas):
             if preco < bb_inf: sinais += 1
             if preco > ema: sinais += 1
             if macd > macd_sig: sinais += 1
+            if vol > vol_med: sinais += 1
 
-            hash_alerta = f"{moeda}-{round(rsi, 1)}-{sinais}"
-            if sinais >= 3 and estado_alertas.get(moeda) != hash_alerta:
-                estado_alertas[moeda] = hash_alerta
-                mensagem = (
-                    f"🚨 Oportunidade: {moeda}\n"
-                    f"💰 Preço: {preco:.2f} USDT\n"
-                    f"📊 RSI: {rsi:.2f} | EMA: {ema:.2f}\n"
-                    f"📈 MACD: {macd:.2f} / Sinal: {macd_sig:.2f}\n"
-                    f"📉 Volume: {vol:.2f} (média: {vol_med:.2f})\n"
-                    f"🎯 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]\n"
-                    f"⚙️ Força: {sinais}/4"
-                )
-                enviar_telegram(mensagem)
+            if sinais >= 3:
+                oportunidades.append({
+                    "moeda": moeda,
+                    "preco": preco,
+                    "rsi": rsi,
+                    "sinais": sinais,
+                    "ema": ema,
+                    "macd": macd,
+                    "macd_sig": macd_sig,
+                    "vol": vol,
+                    "vol_med": vol_med,
+                    "bb_inf": bb_inf,
+                    "bb_sup": bb_sup
+                })
+
         except Exception as e:
             print(f"⚠️ Erro em {moeda}:", e)
 
-def acompanhar_posicoes(exchange, posicoes):
+    top = sorted(oportunidades, key=lambda x: -x["sinais"])[:5]
+    for o in top:
+        mensagem = (
+            f"🚨 Oportunidade: {o['moeda']}\n"
+            f"💰 Preço: {o['preco']:.2f} USDT\n"
+            f"📊 RSI: {o['rsi']:.2f} | EMA: {o['ema']:.2f}\n"
+            f"📈 MACD: {o['macd']:.2f} / Sinal: {o['macd_sig']:.2f}\n"
+            f"📉 Volume: {o['vol']:.2f} (média: {o['vol_med']:.2f})\n"
+            f"🎯 Bollinger: [{o['bb_inf']:.2f} ~ {o['bb_sup']:.2f}]\n"
+            f"⚙️ Força: {o['sinais']}/5"
+        )
+        enviar_telegram(mensagem)
+
+def acompanhar_posicoes(exchange, posicoes, forcar_resumo=False):
+    global ULTIMO_RESUMO
+    linhas = []
+    agora = datetime.now()
+
     for pos in posicoes:
         try:
-            ticker = exchange.fetch_ticker(pos["moeda"])
+            moeda = pos["moeda"]
+            ticker = exchange.fetch_ticker(moeda)
             preco_atual = ticker["last"]
             preco_entrada = pos["preco_entrada"]
             investido = pos["montante"]
             objetivo = pos.get("objetivo", OBJETIVO_PADRAO)
-
             valor_atual = preco_atual * (investido / preco_entrada)
             lucro = valor_atual - investido
             percent = (lucro / investido) * 100
 
             if preco_atual < preco_entrada * QUEDA_LIMITE:
                 enviar_telegram(
-                    f"🔁 {pos['moeda']}: Preço caiu. Considerar reforço?\n"
+                    f"🔁 {moeda}: Preço caiu. Considerar reforço?\n"
                     f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
                 )
             elif percent >= objetivo:
                 enviar_telegram(
-                    f"🎯 {pos['moeda']}: Objetivo de lucro atingido ({percent:.2f}%)!\n"
+                    f"🎯 {moeda}: Objetivo de lucro atingido ({percent:.2f}%)!\n"
                     f"Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}"
                 )
+
+            linhas.append(f"{moeda} | Entrada: {preco_entrada:.2f} | Atual: {preco_atual:.2f} | Lucro: {lucro:.2f}€ ({percent:.2f}%)")
+
         except Exception as e:
-            print("⚠️ Erro posição:", e)
+            print(f"Erro em {pos['moeda']}:", e)
+
+    if forcar_resumo or (agora - ULTIMO_RESUMO).total_seconds() > INTERVALO_RESUMO_HORAS * 3600:
+        if linhas:
+            resumo = "📌 Resumo das tuas posições:\n\n" + "\n".join(f"{i+1}. {linha}" for i, linha in enumerate(linhas))
+            resumo += f"\n\n⌛ Atualizado: {agora.strftime('%H:%M')}"
+            enviar_telegram(resumo)
+            ULTIMO_RESUMO = agora
 
 def iniciar_bot():
     exchange = ccxt.kucoin()
