@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import ccxt
-import json
-import os
 from datetime import datetime
 from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator, EMAIndicator, MACD
@@ -12,21 +10,14 @@ from config import MOEDAS, LOG_PATH
 from io import BytesIO
 from streamlit_autorefresh import st_autorefresh
 from telegram_alert import enviar_telegram
-import firebase_admin
-from firebase_admin import credentials, firestore
-import streamlit as st
-from firebase_admin import credentials, initialize_app
-
 from firebase_config import iniciar_firebase
+
+# Inicializar Firestore
 db = iniciar_firebase(usando_secrets=True, secrets=st.secrets)
 
-
-# 📁 Base de dados local
-FICHEIRO_POSICOES = "posicoes.json"
-FICHEIRO_ESTRATEGIAS = "estrategia_log.csv"
-FICHEIRO_HISTORICO = "historico_vendas.json"
-
-# Funções auxiliares
+# ============================
+# 🔁 Funções Firestore
+# ============================
 def carregar_posicoes():
     try:
         docs = db.collection("posicoes").stream()
@@ -37,10 +28,8 @@ def carregar_posicoes():
 
 def guardar_posicoes(posicoes):
     try:
-        # Apagar todas as posições antigas
         for doc in db.collection("posicoes").stream():
             doc.reference.delete()
-        # Adicionar as novas
         for pos in posicoes:
             db.collection("posicoes").add(pos)
     except Exception as e:
@@ -48,32 +37,33 @@ def guardar_posicoes(posicoes):
 
 def guardar_venda(registro):
     try:
-        historico = []
-        if os.path.exists(FICHEIRO_HISTORICO):
-            with open(FICHEIRO_HISTORICO, "r") as f:
-                historico = json.load(f)
-        historico.append(registro)
-        with open(FICHEIRO_HISTORICO, "w") as f:
-            json.dump(historico, f, indent=2)
+        db.collection("historico_vendas").add(registro)
     except Exception as e:
         st.error(f"❌ Erro ao guardar histórico de vendas: {e}")
 
+def carregar_historico_vendas():
+    try:
+        docs = db.collection("historico_vendas").stream()
+        return [doc.to_dict() for doc in docs]
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
+        return []
+
+# ============================
 # ⚙️ Configuração geral
+# ============================
 st.set_page_config(page_title="Painel RSI", layout="wide")
 st.title("📈 Painel RSI com Indicadores Técnicos Avançados")
 
-# Sidebar: filtros + navegação
 st.sidebar.header("⚙️ Filtros")
 tempo_refresco = st.sidebar.slider("⏳ Atualizar a cada (segundos)", 10, 300, 60, step=10)
 timeframe = st.sidebar.selectbox("🕒 Intervalo de tempo", ["15m", "1h", "4h"], index=1)
 exchanges_disponiveis = ['kucoin', 'coinbase', 'kraken']
 exchange_nome = st.sidebar.selectbox("🌐 Exchange", exchanges_disponiveis, index=0)
 
-# 🔽 Menu de secções
 st.sidebar.markdown("---")
 secao = st.sidebar.radio("📂 Secções", ["📊 Painel RSI", "💼 Minhas Posições", "📈 Estratégias", "📜 Histórico de Vendas"])
 
-# 🔄 Atualização automática
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
 
 # ============================
