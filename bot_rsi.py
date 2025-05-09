@@ -23,6 +23,7 @@ from firebase_config import iniciar_firebase
 
 db = iniciar_firebase()
 
+
 FICHEIRO_POSICOES = "posicoes.json"
 MODELO_PATH = "modelo_treinado.pkl"
 FICHEIRO_PREVISOES = "historico_previsoes.csv"

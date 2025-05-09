@@ -1,6 +1,6 @@
 import firebase_admin
 from firebase_admin import credentials, firestore
-import os
+import os, json
 
 def iniciar_firebase(usando_secrets=False, secrets=None):
     if not firebase_admin._apps:
@@ -10,7 +10,11 @@ def iniciar_firebase(usando_secrets=False, secrets=None):
                 firebase_dict["private_key"] = firebase_dict["private_key"].replace("\\n", "\n")
             cred = credentials.Certificate(firebase_dict)
         else:
-            cred = credentials.Certificate("firebase_key.json")
+            firebase_json = os.environ["FIREBASE_JSON"]  # ← VEM DA ENV DO RENDER
+            firebase_dict = json.loads(firebase_json)
+            if "\\n" in firebase_dict["private_key"]:
+                firebase_dict["private_key"] = firebase_dict["private_key"].replace("\\n", "\n")
+            cred = credentials.Certificate(firebase_dict)
 
         firebase_admin.initialize_app(cred)
 

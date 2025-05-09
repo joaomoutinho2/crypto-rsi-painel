@@ -17,17 +17,9 @@ from firebase_admin import credentials, firestore
 import streamlit as st
 from firebase_admin import credentials, initialize_app
 
-if not firebase_admin._apps:
-    firebase_dict = dict(st.secrets["firebase"])
-    
-    # Só aplicar replace se for necessário (ou seja, se "\\n" estiver mesmo presente)
-    if "\\n" in firebase_dict["private_key"]:
-        firebase_dict["private_key"] = firebase_dict["private_key"].replace("\\n", "\n")
-    
-    cred = credentials.Certificate(firebase_dict)
-    firebase_admin.initialize_app(cred)
+from firebase_config import iniciar_firebase
+db = iniciar_firebase(usando_secrets=True, secrets=st.secrets)
 
-db = firestore.client()
 
 # 📁 Base de dados local
 FICHEIRO_POSICOES = "posicoes.json"
