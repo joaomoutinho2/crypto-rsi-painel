@@ -7,13 +7,21 @@ db = iniciar_firebase()
 
 def atualizar_resultados_firestore():
     docs = db.collection("historico_previsoes").where("resultado", "==", None).stream()
+    contador = 0
 
     for doc in docs:
         data = doc.to_dict()
         try:
-            moeda = data["moeda"]
+            moeda = data.get("moeda")
             ema_diff = float(data.get("EMA_diff", 0))
-            data_entrada = data["data"].replace(tzinfo=None)
+            data_entrada = data.get("data")
+
+            if data_entrada is None or not moeda:
+                continue
+
+            # Converter datetime para formato correto se vier do Firestore
+            if hasattr(data_entrada, 'replace'):
+                data_entrada = data_entrada.replace(tzinfo=None)
 
             ticker = EXCHANGE.fetch_ticker(moeda)
             preco_atual = ticker["last"]
@@ -29,9 +37,12 @@ def atualizar_resultados_firestore():
             })
 
             print(f"✅ Atualizado {moeda} com resultado {resultado} ({variacao:.2f}%)")
+            contador += 1
 
         except Exception as e:
             print(f"⚠️ Erro em {data.get('moeda', '???')}: {e}")
+
+    print(f"\n🟢 {contador} previsões atualizadas com sucesso.")
 
 if __name__ == "__main__":
     atualizar_resultados_firestore()
