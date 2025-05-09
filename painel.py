@@ -14,12 +14,14 @@ from streamlit_autorefresh import st_autorefresh
 from telegram_alert import enviar_telegram
 import firebase_admin
 from firebase_admin import credentials, firestore
+import streamlit as st
+from firebase_admin import credentials, initialize_app
 
-# Inicializa o Firebase apenas uma vez
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["firebase"])
     firebase_admin.initialize_app(cred)
 db = firestore.client()
+
 
 # 📁 Base de dados local
 FICHEIRO_POSICOES = "posicoes.json"
