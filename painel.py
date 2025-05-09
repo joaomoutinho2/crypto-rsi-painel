@@ -21,7 +21,9 @@ from firebase_admin import credentials, firestore
 
 # Lê a variável de ambiente como string
 firebase_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
-firebase_dict = json.loads(firebase_json)
+with open("caminho/para/seu/firebase.json") as f:
+    firebase_dict = json.load(f)  # sem 's' → já retorna um dicionário
+
 
 # Inicializa o Firebase com o dicionário
 cred = credentials.Certificate(firebase_dict)
