@@ -42,7 +42,6 @@ def carregar_posicoes():
         return []
 
 def analisar_oportunidades(exchange, moedas, modelo):
-    oportunidades = []
     for moeda in moedas:
         try:
             candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
@@ -77,12 +76,12 @@ def analisar_oportunidades(exchange, moedas, modelo):
 
             if modelo.predict(entrada)[0]:
                 mensagem = (
-                    f"🚨 Oportunidade: {moeda}"
-                    f"💰 Preço: {preco:.2f} USDT"
-                    f"📊 RSI: {rsi:.2f} | EMA: {ema:.2f}"
-                    f"📈 MACD: {macd_val:.2f} / Sinal: {macd_sig:.2f}"
-                    f"📉 Volume: {vol:.2f} (média: {vol_med:.2f})"
-                    f"🎯 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]"
+                    f"🚨 Oportunidade: {moeda}\n"
+                    f"💰 Preço: {preco:.2f} USDT\n"
+                    f"📊 RSI: {rsi:.2f} | EMA: {ema:.2f}\n"
+                    f"📈 MACD: {macd_val:.2f} / Sinal: {macd_sig:.2f}\n"
+                    f"📉 Volume: {vol:.2f} (média: {vol_med:.2f})\n"
+                    f"🎯 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]\n"
                     f"⚙️ Entrada considerada promissora ✅"
                 )
                 enviar_telegram(mensagem)
@@ -108,11 +107,9 @@ def acompanhar_posicoes(exchange, posicoes, forcar_resumo=False):
             percent = (lucro / investido) * 100
 
             if preco_atual < preco_entrada * QUEDA_LIMITE:
-                enviar_telegram(f"🔁 {moeda}: Preço caiu. Considerar reforço?
-Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
+                enviar_telegram(f"🔁 {moeda}: Preço caiu. Considerar reforço? Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
             elif percent >= objetivo:
-                enviar_telegram(f"🎯 {moeda}: Objetivo de lucro atingido ({percent:.2f}%)!
-Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
+                enviar_telegram(f"🎯 {moeda}: Objetivo de lucro atingido ({percent:.2f}%)! Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
 
             linhas.append(f"{moeda} | Entrada: {preco_entrada:.2f} | Atual: {preco_atual:.2f} | Lucro: {lucro:.2f}€ ({percent:.2f}%)")
         except Exception as e:
@@ -120,7 +117,7 @@ Atual: {preco_atual:.2f} | Entrada: {preco_entrada:.2f}")
 
     if forcar_resumo or (agora - ULTIMO_RESUMO).total_seconds() > INTERVALO_RESUMO_HORAS * 3600:
         if linhas:
-            resumo = "📌 Resumo das tuas posições:" + "\n".join(f"{i+1}. {linha}" for i, linha in enumerate(linhas))
+            resumo = "📌 Resumo das tuas posições:\n\n" + "\n".join(f"{i+1}. {linha}" for i, linha in enumerate(linhas))
             resumo += f"\n\n⌛ Atualizado: {agora.strftime('%H:%M')}"
             enviar_telegram(resumo)
             ULTIMO_RESUMO = agora
