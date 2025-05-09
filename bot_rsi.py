@@ -13,20 +13,13 @@ from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
 from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, firestore
-import os
-import json
-import firebase_admin
-from firebase_admin import credentials, firestore
 from firebase_config import iniciar_firebase
 
+# Inicializar Firestore
 db = iniciar_firebase()
-
 
 FICHEIRO_POSICOES = "posicoes.json"
 MODELO_PATH = "modelo_treinado.pkl"
-FICHEIRO_PREVISOES = "historico_previsoes.csv"
 QUEDA_LIMITE = 0.95
 OBJETIVO_PADRAO = 10
 INTERVALO_RESUMO_HORAS = 2
@@ -48,19 +41,15 @@ def enviar_telegram(mensagem):
 def guardar_previsao_firestore(registo):
     db.collection("historico_previsoes").add(registo)
 
-
 def guardar_posicoes(posicoes):
-    # Apagar todas as posições antigas
     for doc in db.collection("posicoes").stream():
         doc.reference.delete()
-    # Adicionar as novas
     for pos in posicoes:
         db.collection("posicoes").add(pos)
 
 def carregar_posicoes():
     docs = db.collection("posicoes").stream()
     return [doc.to_dict() for doc in docs]
-
 
 def analisar_oportunidades(exchange, moedas, modelo):
     oportunidades = []
@@ -127,12 +116,11 @@ def analisar_oportunidades(exchange, moedas, modelo):
         except Exception as e:
             print(f"⚠️ Erro em {moeda}:", e)
 
-    # Ordenar oportunidades por maior força (soma de indicadores positivos)
     oportunidades_ordenadas = sorted(oportunidades, key=lambda x: (
         -abs(x["MACD_diff"]),
         -abs(x["EMA_diff"]),
         -abs(x["Volume_relativo"]),
-        -abs(0.5 - x["BB_position"]),  # mais perto das extremidades é melhor
+        -abs(0.5 - x["BB_position"]),
         x["RSI"]
     ))
 
@@ -208,11 +196,9 @@ with st.form("form_nova_posicao"):
     submeter = st.form_submit_button("Registrar Posição")
 
     if submeter:
-        # Validar os dados antes de salvar
         if not moeda or montante <= 0 or preco_entrada <= 0:
             st.error("❌ Todos os campos devem ser preenchidos corretamente.")
         else:
-            # Criar nova posição
             nova_posicao = {
                 "moeda": moeda,
                 "montante": montante,
@@ -220,9 +206,7 @@ with st.form("form_nova_posicao"):
                 "objetivo": objetivo,
                 "data": datetime.now().strftime("%Y-%m-%d %H:%M")
             }
-            # Adicionar nova posição à lista
             posicoes.append(nova_posicao)
-            # Salvar no arquivo JSON
             guardar_posicoes(posicoes)
             st.success("✅ Posição registrada com sucesso!")
-            st.rerun()  # Atualizar a página
+            st.rerun()
