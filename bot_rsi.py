@@ -13,6 +13,25 @@ from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
 from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 import streamlit as st
+import firebase_admin
+from firebase_admin import credentials, firestore
+import os
+import json
+import firebase_admin
+from firebase_admin import credentials, firestore
+
+# Lê a variável de ambiente como string
+firebase_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
+firebase_dict = json.loads(firebase_json)
+
+# Inicializa o Firebase com o dicionário
+cred = credentials.Certificate(firebase_dict)
+firebase_admin.initialize_app(cred)
+db = firestore.client()
+
+firebase_admin.initialize_app(cred)
+db = firestore.client()
+
 
 FICHEIRO_POSICOES = "posicoes.json"
 MODELO_PATH = "modelo_treinado.pkl"
@@ -41,20 +60,17 @@ def gravar_previsao(registo):
     df.to_csv(FICHEIRO_PREVISOES, mode="a", header=not existe, index=False)
 
 def guardar_posicoes(posicoes):
-    try:
-        with open(FICHEIRO_POSICOES, "w") as f:
-            json.dump(posicoes, f, indent=2)
-    except Exception as e:
-        print(f"❌ Erro ao guardar posições: {e}")
+    # Apagar todas as posições antigas
+    for doc in db.collection("posicoes").stream():
+        doc.reference.delete()
+    # Adicionar as novas
+    for pos in posicoes:
+        db.collection("posicoes").add(pos)
 
 def carregar_posicoes():
-    if not os.path.exists(FICHEIRO_POSICOES):
-        return []
-    try:
-        with open(FICHEIRO_POSICOES, "r") as f:
-            return json.load(f)
-    except:
-        return []
+    docs = db.collection("posicoes").stream()
+    return [doc.to_dict() for doc in docs]
+
 
 def analisar_oportunidades(exchange, moedas, modelo):
     oportunidades = []

@@ -12,27 +12,40 @@ from config import MOEDAS, LOG_PATH
 from io import BytesIO
 from streamlit_autorefresh import st_autorefresh
 from telegram_alert import enviar_telegram
+import firebase_admin
+from firebase_admin import credentials, firestore
+import os
+import json
+import firebase_admin
+from firebase_admin import credentials, firestore
+
+# Lê a variável de ambiente como string
+firebase_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
+firebase_dict = json.loads(firebase_json)
+
+# Inicializa o Firebase com o dicionário
+cred = credentials.Certificate(firebase_dict)
+firebase_admin.initialize_app(cred)
+db = firestore.client()
+
+firebase_admin.initialize_app(cred)
+db = firestore.client()
 
 # 📁 Base de dados local
 FICHEIRO_POSICOES = "posicoes.json"
 FICHEIRO_ESTRATEGIAS = "estrategia_log.csv"
 
 def carregar_posicoes():
-    if not os.path.exists(FICHEIRO_POSICOES):
-        return []
-    try:
-        with open(FICHEIRO_POSICOES, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar posições: {e}")
-        return []
+    docs = db.collection("posicoes").stream()
+    return [doc.to_dict() for doc in docs]
 
 def guardar_posicoes(posicoes):
-    try:
-        with open(FICHEIRO_POSICOES, "w") as f:
-            json.dump(posicoes, f, indent=2)
-    except Exception as e:
-        st.error(f"❌ Erro ao guardar posições: {e}")
+    # Apagar todas as posições antigas
+    for doc in db.collection("posicoes").stream():
+        doc.reference.delete()
+    # Adicionar as novas
+    for pos in posicoes:
+        db.collection("posicoes").add(pos)
 
 def guardar_venda(registro):
     FICHEIRO_HISTORICO = "historico_vendas.json"
