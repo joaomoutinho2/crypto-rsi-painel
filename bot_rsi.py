@@ -21,8 +21,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from firebase_config import iniciar_firebase
 
-db = iniciar_firebase(usando_secrets=True, secrets=st.secrets)
-
+db = iniciar_firebase()
 
 FICHEIRO_POSICOES = "posicoes.json"
 MODELO_PATH = "modelo_treinado.pkl"
