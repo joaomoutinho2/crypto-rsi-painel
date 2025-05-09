@@ -21,7 +21,7 @@ from firebase_admin import credentials, firestore
 
 # Lê a variável de ambiente como string
 firebase_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
-with open("caminho/para/seu/firebase.json") as f:
+with open("C:\Users\joao-\OneDrive\Área de Trabalho\Programa_Investimento\firebase_key.json") as f:
     firebase_dict = json.load(f)  # sem 's' → já retorna um dicionário
 
 
