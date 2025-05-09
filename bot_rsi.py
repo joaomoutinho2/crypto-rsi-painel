@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 import os
 import json
+import threading
 from flask import Flask
 from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
