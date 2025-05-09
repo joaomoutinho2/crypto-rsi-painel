@@ -210,6 +210,16 @@ def iniciar_bot():
         time.sleep(3600)
 
 app = Flask(__name__)
+
+@app.route('/treinar_modelo')
+def treinar_modelo():
+    try:
+        from treino_modelo_firebase import atualizar_resultados_firestore
+        atualizar_resultados_firestore()  # ou o nome da função que treina o modelo
+        return "✅ Modelo treinado com sucesso!"
+    except Exception as e:
+        return f"❌ Erro ao treinar modelo: {e}"
+
 @app.route('/')
 def home():
     return "✅ Bot RSI com modelo, previsões e limite de alertas ativo."
