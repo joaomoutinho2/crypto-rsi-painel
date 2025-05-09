@@ -45,17 +45,8 @@ def enviar_telegram(mensagem):
     except Exception as e:
         print("❌ Erro ao enviar:", e)
 
-def guardar_previsao_firestore(moeda, rsi, ema_diff, motivo):
-    db.collection("historico_previsoes").add({
-        "moeda": moeda,
-        "data": datetime.utcnow(),
-        "RSI": rsi,
-        "EMA_diff": ema_diff,
-        "resultado": None,
-        "variacao": None,
-        "preco_atual": None,
-        "motivo": motivo
-    })
+def guardar_previsao_firestore(registo):
+    db.collection("historico_previsoes").add(registo)
 
 
 def guardar_posicoes(posicoes):
