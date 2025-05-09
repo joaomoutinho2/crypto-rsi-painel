@@ -19,8 +19,10 @@ MODELO_PATH = "modelo_treinado.pkl"
 FICHEIRO_PREVISOES = "historico_previsoes.csv"
 QUEDA_LIMITE = 0.95
 OBJETIVO_PADRAO = 10
-ULTIMO_RESUMO = datetime.now() - timedelta(hours=2)
 INTERVALO_RESUMO_HORAS = 2
+MAX_ALERTAS_POR_CICLO = 5  # Limite de alertas por ciclo
+
+ULTIMO_RESUMO = datetime.now() - timedelta(hours=2)
 
 def enviar_telegram(mensagem):
     print("📤 Enviar para Telegram:")
@@ -48,6 +50,8 @@ def carregar_posicoes():
         return []
 
 def analisar_oportunidades(exchange, moedas, modelo):
+    oportunidades = []
+
     for moeda in moedas:
         try:
             candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
@@ -86,17 +90,17 @@ def analisar_oportunidades(exchange, moedas, modelo):
                 "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Moeda": moeda,
                 "RSI": rsi,
-                "EMA_diff": (preco - ema) / ema,
-                "MACD_diff": macd_val - macd_sig,
-                "Volume_relativo": vol / vol_med if vol_med else 1,
-                "BB_position": (preco - bb_inf) / (bb_sup - bb_inf) if bb_sup > bb_inf else 0.5,
+                "EMA_diff": entrada["EMA_diff"].iloc[0],
+                "MACD_diff": entrada["MACD_diff"].iloc[0],
+                "Volume_relativo": entrada["Volume_relativo"].iloc[0],
+                "BB_position": entrada["BB_position"].iloc[0],
                 "Previsao": int(previsao)
             }
 
             gravar_previsao(registo)
 
             if previsao:
-                mensagem = (
+                registo["Mensagem"] = (
                     f"🚨 Oportunidade: {moeda}\n"
                     f"💰 Preço: {preco:.2f} USDT\n"
                     f"📊 RSI: {rsi:.2f} | EMA: {ema:.2f}\n"
@@ -105,10 +109,22 @@ def analisar_oportunidades(exchange, moedas, modelo):
                     f"🎯 Bollinger: [{bb_inf:.2f} ~ {bb_sup:.2f}]\n"
                     f"⚙️ Entrada considerada promissora ✅"
                 )
-                enviar_telegram(mensagem)
+                oportunidades.append(registo)
 
         except Exception as e:
             print(f"⚠️ Erro em {moeda}:", e)
+
+    # Ordenar oportunidades por maior força (soma de indicadores positivos)
+    oportunidades_ordenadas = sorted(oportunidades, key=lambda x: (
+        -abs(x["MACD_diff"]),
+        -abs(x["EMA_diff"]),
+        -abs(x["Volume_relativo"]),
+        -abs(0.5 - x["BB_position"]),  # mais perto das extremidades é melhor
+        x["RSI"]
+    ))
+
+    for registo in oportunidades_ordenadas[:MAX_ALERTAS_POR_CICLO]:
+        enviar_telegram(registo["Mensagem"])
 
 def acompanhar_posicoes(exchange, posicoes, forcar_resumo=False):
     global ULTIMO_RESUMO
@@ -122,7 +138,7 @@ def acompanhar_posicoes(exchange, posicoes, forcar_resumo=False):
             preco_atual = ticker["last"]
             preco_entrada = pos["preco_entrada"]
             investido = pos["montante"]
-            objetivo = pos.get("objetivo", 10)
+            objetivo = pos.get("objetivo", OBJETIVO_PADRAO)
             valor_atual = preco_atual * (investido / preco_entrada)
             lucro = valor_atual - investido
             percent = (lucro / investido) * 100
@@ -144,7 +160,7 @@ def acompanhar_posicoes(exchange, posicoes, forcar_resumo=False):
             ULTIMO_RESUMO = agora
 
 def iniciar_bot():
-    print("🔁 Iniciando bot com modelo...")
+    print("🔁 Iniciando bot com modelo (limitado)...")
     modelo = joblib.load(MODELO_PATH)
     exchange = ccxt.kucoin()
     exchange.load_markets()
@@ -160,7 +176,7 @@ def iniciar_bot():
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Bot RSI com modelo e gravação de previsões ativo."
+    return "✅ Bot RSI com modelo, previsões e limite de alertas ativo."
 
 if __name__ == "__main__":
     threading.Thread(target=iniciar_bot).start()
