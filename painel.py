@@ -11,6 +11,7 @@ from io import BytesIO
 from streamlit_autorefresh import st_autorefresh
 from telegram_alert import enviar_telegram
 from firebase_config import iniciar_firebase
+from firebase_admin import firestore
 
 # Inicializar Firestore
 db = iniciar_firebase(usando_secrets=True, secrets=st.secrets)
