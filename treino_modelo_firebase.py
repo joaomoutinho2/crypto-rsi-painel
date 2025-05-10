@@ -5,7 +5,6 @@ from sklearn.metrics import classification_report, confusion_matrix, accuracy_sc
 import joblib
 from datetime import datetime
 from firebase_config import iniciar_firebase
-from google.cloud.firestore_v1.base_query import FieldFilter
 
 # 🔥 Inicializar Firestore
 try:
@@ -16,12 +15,14 @@ except Exception as e:
 
 # 📅 Ler dados reais do Firebase
 try:
-    docs = db.collection("historico_previsoes").where("resultado", "!=", None).stream()
-    registos = [
-        doc.to_dict()
-        for doc in docs
-        if all(k in doc.to_dict() for k in ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position", "resultado"])
-    ]
+    docs = db.collection("historico_previsoes").stream()
+    registos = []
+    for doc in docs:
+        data = doc.to_dict()
+        if all(k in data for k in ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position", "resultado"]):
+            registos.append(data)
+        else:
+            print(f"⚠️ Documento ignorado: {doc.id} - Faltam campos obrigatórios.")
 except Exception as e:
     print(f"❌ Erro ao carregar dados do Firestore: {e}")
     exit()
@@ -33,18 +34,7 @@ if not registos:
 
 df = pd.DataFrame(registos)
 
-# Verificar se a coluna "Previsao" existe
-if "Previsao" in df.columns:
-    df["Previsao"] = df["Previsao"].astype(int)
-else:
-    print("❌ A coluna 'Previsao' não foi encontrada nos dados do Firestore.")
-    exit()
-
 print(f"📊 {len(df)} registos carregados do Firestore para treino.")
-
-if len(df) < 2:
-    print("❌ Ainda não há dados suficientes no Firestore para treino.")
-    exit()
 
 # 🎯 Preparar dados
 features = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position"]
@@ -55,7 +45,11 @@ if not all(feature in df.columns for feature in features):
 X = df[features]
 y = df["resultado"]
 
-# Dividir os dados em treino e teste
+if len(df) < 2:
+    print("❌ Ainda não há dados suficientes no Firestore para treino.")
+    exit()
+
+# 🔀 Dividir os dados
 try:
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 except Exception as e:
@@ -85,7 +79,7 @@ except Exception as e:
     print(f"❌ Erro ao avaliar o modelo: {e}")
     exit()
 
-# 📎 Guardar modelo local
+# 💾 Guardar modelo local
 try:
     joblib.dump(modelo, "modelo_treinado.pkl")
     print("✅ Modelo guardado como modelo_treinado.pkl")
@@ -93,7 +87,7 @@ except Exception as e:
     print(f"❌ Erro ao guardar o modelo localmente: {e}")
     exit()
 
-# ☕️ Guardar metadados no Firestore
+# ☁️ Guardar metadados no Firestore
 resultado_doc = {
     "data_treino": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     "features": features,
