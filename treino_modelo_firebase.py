@@ -17,6 +17,7 @@ docs = db.collection("historico_previsoes").where(
 registos = [doc.to_dict() for doc in docs if all(k in doc.to_dict() for k in ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position"])]
 
 df = pd.DataFrame(registos)
+df["Previsao"] = df["Previsao"].astype(int)  # ✅ garantir tipo inteiro
 
 print(f"📊 {len(df)} registos carregados do Firestore para treino.")
 

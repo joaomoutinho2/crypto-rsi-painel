@@ -362,9 +362,9 @@ elif secao == "💼 Minhas Posições":
 # ============================
 elif secao == "📈 Estratégias":
     st.title("📈 Estratégias Automáticas Detetadas")
-    if os.path.exists(FICHEIRO_ESTRATEGIAS):
+    if os.path.exists(estrategias):
         try:
-            df = pd.read_csv(FICHEIRO_ESTRATEGIAS)
+            df = pd.read_csv(estrategias)
             if not df.empty:
                 st.dataframe(df, use_container_width=True)
                 csv = df.to_csv(index=False).encode("utf-8")
