@@ -11,11 +11,11 @@ from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
-from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+from utils.config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 import streamlit as st
 
-from firebase_config import iniciar_firebase
-from treino_modelo_firebase import modelo  # ✅ modelo treinado automaticamente
+from utils.firebase_config import iniciar_firebase
+from modelo.treino_modelo_firebase import modelo  # ✅ modelo treinado automaticamente
 
 # ✅ Verificar se o modelo foi carregado com sucesso
 if modelo is None:

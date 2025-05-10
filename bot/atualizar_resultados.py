@@ -1,4 +1,4 @@
-from firebase_config import iniciar_firebase
+from utils.firebase_config import iniciar_firebase
 from datetime import datetime
 import ccxt
 

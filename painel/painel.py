@@ -6,11 +6,11 @@ from datetime import datetime
 from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.volatility import BollingerBands
-from config import MOEDAS, LOG_PATH
+from utils.config import MOEDAS, LOG_PATH
 from io import BytesIO
 from streamlit_autorefresh import st_autorefresh
-from telegram_alert import enviar_telegram
-from firebase_config import iniciar_firebase
+from bot.telegram_alert import enviar_telegram
+from utils.firebase_config import iniciar_firebase
 from firebase_admin import firestore
 
 # Inicializar Firestore

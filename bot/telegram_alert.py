@@ -1,5 +1,5 @@
 import requests
-from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+from utils.config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
 def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
