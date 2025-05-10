@@ -16,9 +16,7 @@ except Exception as e:
 
 # 📅 Ler dados reais do Firebase
 try:
-    docs = db.collection("historico_previsoes").where(
-        filter=FieldFilter("resultado", "!=", None)
-    ).stream()
+    docs = db.collection("historico_previsoes").where("resultado", "!=", None).stream()
     registos = [
         doc.to_dict()
         for doc in docs
