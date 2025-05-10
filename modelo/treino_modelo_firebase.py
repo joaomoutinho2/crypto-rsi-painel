@@ -19,6 +19,7 @@ try:
     registos = []
     for doc in docs:
         data = doc.to_dict()
+        # ⚠️ Verifica se todos os campos necessários existem
         if all(k in data for k in ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position", "resultado"]):
             registos.append(data)
         else:
@@ -27,13 +28,12 @@ except Exception as e:
     print(f"❌ Erro ao carregar dados do Firestore: {e}")
     exit()
 
-# Verificar se há dados suficientes
+# ❗ Verificar se há dados suficientes
 if not registos:
     print("❌ Nenhum registo válido encontrado no Firestore.")
     exit()
 
 df = pd.DataFrame(registos)
-
 print(f"📊 {len(df)} registos carregados do Firestore para treino.")
 
 # 🎯 Preparar dados
@@ -49,14 +49,14 @@ if len(df) < 2:
     print("❌ Ainda não há dados suficientes no Firestore para treino.")
     exit()
 
-# 🔀 Dividir os dados
+# 🔀 Dividir os dados em treino e teste
 try:
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 except Exception as e:
     print(f"❌ Erro ao dividir os dados em treino e teste: {e}")
     exit()
 
-# 🤖 Treinar modelo
+# 🤖 Treinar o modelo
 try:
     modelo = RandomForestClassifier(n_estimators=100, random_state=42)
     modelo.fit(X_train, y_train)
@@ -64,7 +64,7 @@ except Exception as e:
     print(f"❌ Erro ao treinar o modelo: {e}")
     exit()
 
-# 📊 Avaliação
+# 📊 Avaliação do modelo
 try:
     y_pred = modelo.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
@@ -79,7 +79,7 @@ except Exception as e:
     print(f"❌ Erro ao avaliar o modelo: {e}")
     exit()
 
-# 💾 Guardar modelo local
+# 💾 Guardar modelo localmente
 try:
     joblib.dump(modelo, "modelo_treinado.pkl")
     print("✅ Modelo guardado como modelo_treinado.pkl")
@@ -87,7 +87,7 @@ except Exception as e:
     print(f"❌ Erro ao guardar o modelo localmente: {e}")
     exit()
 
-# ☁️ Guardar metadados no Firestore
+# ☁️ Guardar metadados do modelo no Firestore
 resultado_doc = {
     "data_treino": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     "features": features,

@@ -11,11 +11,14 @@ from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
-from utils.config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-import streamlit as st
 
+# ✅ Corrigido o path da importação
+from utils.config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 from utils.firebase_config import iniciar_firebase
-from modelo.treino_modelo_firebase import modelo  # ✅ modelo treinado automaticamente
+from modelo.treino_modelo_firebase import modelo
+
+# ✅ Caminho do modelo treinado
+MODELO_PATH = "modelo/modelo_treinado.pkl"
 
 # ✅ Verificar se o modelo foi carregado com sucesso
 if modelo is None:
@@ -214,13 +217,14 @@ def iniciar_bot():
         print("⏸️ Esperar 1 hora...\n")
         time.sleep(3600)
 
+# ✅ Flask API para endpoint de treino
 app = Flask(__name__)
 
 @app.route('/treinar_modelo')
 def treinar_modelo():
     try:
-        from treino_modelo_firebase import atualizar_resultados_firestore
-        atualizar_resultados_firestore()  # ou o nome da função que treina o modelo
+        from modelo.treino_modelo_firebase import atualizar_resultados_firestore
+        atualizar_resultados_firestore()
         return "✅ Modelo treinado com sucesso!"
     except Exception as e:
         return f"❌ Erro ao treinar modelo: {e}"
@@ -232,31 +236,3 @@ def home():
 if __name__ == "__main__":
     threading.Thread(target=iniciar_bot).start()
     app.run(host="0.0.0.0", port=10000)
-
-# Carregar posições existentes
-posicoes = carregar_posicoes()
-
-# Formulário para registrar uma nova posição
-st.title("💼 Registrar Nova Posição")
-with st.form("form_nova_posicao"):
-    moeda = st.text_input("Moeda (ex: BTC/USDT)")
-    montante = st.number_input("Montante investido (€)", min_value=0.0, step=0.01)
-    preco_entrada = st.number_input("Preço de entrada (USDT)", min_value=0.0, step=0.01)
-    objetivo = st.number_input("Objetivo de lucro (%)", min_value=0.0, step=0.1, value=10.0)
-    submeter = st.form_submit_button("Registrar Posição")
-
-    if submeter:
-        if not moeda or montante <= 0 or preco_entrada <= 0:
-            st.error("❌ Todos os campos devem ser preenchidos corretamente.")
-        else:
-            nova_posicao = {
-                "moeda": moeda,
-                "montante": montante,
-                "preco_entrada": preco_entrada,
-                "objetivo": objetivo,
-                "data": datetime.now().strftime("%Y-%m-%d %H:%M")
-            }
-            posicoes.append(nova_posicao)
-            guardar_posicoes(posicoes)
-            st.success("✅ Posição registrada com sucesso!")
-            st.rerun()

@@ -2,10 +2,14 @@ from utils.firebase_config import iniciar_firebase
 from datetime import datetime
 import ccxt
 
+# 🔄 Exchange
 EXCHANGE = ccxt.kucoin()
+
+# 🔥 Inicializar Firestore
 db = iniciar_firebase()
 
 def atualizar_resultados_firestore():
+    # ⚠️ Filtra previsões que ainda não têm resultado
     docs = db.collection("historico_previsoes").where("resultado", "==", None).stream()
     contador = 0
 
@@ -19,17 +23,20 @@ def atualizar_resultados_firestore():
             if data_entrada is None or not moeda:
                 continue
 
-            # Converter datetime para formato correto se vier do Firestore
+            # Corrige formato se necessário
             if hasattr(data_entrada, 'replace'):
                 data_entrada = data_entrada.replace(tzinfo=None)
 
+            # 🔁 Obter preço atual
             ticker = EXCHANGE.fetch_ticker(moeda)
             preco_atual = ticker["last"]
 
+            # 🧠 Estimar preço de entrada
             preco_entrada_estimado = max(preco_atual / (1 + ema_diff), 0.0001)
             variacao = (preco_atual - preco_entrada_estimado) / preco_entrada_estimado * 100
             resultado = 1 if variacao >= 2 else 0
 
+            # 🔄 Atualizar documento
             doc.reference.update({
                 "preco_atual": preco_atual,
                 "variacao": variacao,
@@ -44,5 +51,6 @@ def atualizar_resultados_firestore():
 
     print(f"\n🟢 {contador} previsões atualizadas com sucesso.")
 
+# Executável diretamente
 if __name__ == "__main__":
     atualizar_resultados_firestore()

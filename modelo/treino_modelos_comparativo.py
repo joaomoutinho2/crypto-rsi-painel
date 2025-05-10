@@ -1,4 +1,3 @@
-
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
@@ -11,6 +10,8 @@ import joblib
 # 📥 Carregar dados
 df = pd.read_csv("resultados_backtest.csv")
 df["Sucesso"] = df["Lucro (%)"] > 0
+
+# 📊 Features e target
 features = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position"]
 X = df[features]
 y = df["Sucesso"]
@@ -28,12 +29,14 @@ modelos = {
 
 melhor_modelo = None
 melhor_score = 0
+nome_melhor = None
 
 print("\n📊 Avaliação dos modelos:")
 for nome, modelo in modelos.items():
     modelo.fit(X_train, y_train)
     y_pred = modelo.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
+
     print(f"\n🧠 Modelo: {nome}")
     print(classification_report(y_test, y_pred))
     print("Confusão:", confusion_matrix(y_test, y_pred))
