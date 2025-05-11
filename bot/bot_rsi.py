@@ -217,8 +217,11 @@ def iniciar_bot():
         print("⏸️ Esperar 1 hora...\n")
         time.sleep(3600)
 
-# ✅ Flask API para endpoint de treino
 app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ Bot RSI com modelo ativo."
 
 @app.route('/treinar_modelo')
 def treinar_modelo():
@@ -229,11 +232,8 @@ def treinar_modelo():
     except Exception as e:
         return f"❌ Erro ao treinar modelo: {e}"
 
-@app.route('/')
-def home():
-    return "✅ Bot RSI com modelo, previsões e limite de alertas ativo."
-
+# 🟢 Mantém o bot a correr em loop, e o Flask a responder ao Render
 if __name__ == "__main__":
-    threading.Thread(target=iniciar_bot).start()
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    threading.Thread(target=iniciar_bot).start()  # inicia o bot num ciclo infinito
+    port = int(os.environ.get("PORT", 10000))     # Render define PORT automaticamente
+    app.run(host="0.0.0.0", port=port)             # Mantém a porta aberta para evitar timeout
