@@ -204,6 +204,20 @@ def acompanhar_posicoes(exchange, posicoes, forcar_resumo=False):
             enviar_telegram(resumo)
             ULTIMO_RESUMO = agora
 
+def atualizar_documentos_firestore():
+    try:
+        docs = db.collection("historico_previsoes").stream()
+        for doc in docs:
+            data = doc.to_dict()
+            if "resultado" not in data:
+                db.collection("historico_previsoes").document(doc.id).update({"resultado": None})
+                print(f"✅ Documento atualizado: {doc.id} - Campo 'resultado' adicionado.")
+    except Exception as e:
+        print(f"❌ Erro ao atualizar documentos no Firestore: {e}")
+
+# Chamar a função para atualizar os documentos
+atualizar_documentos_firestore()
+
 def iniciar_bot():
     print("🔁 Iniciando bot com modelo (limitado)...")
     modelo = joblib.load(MODELO_PATH)
