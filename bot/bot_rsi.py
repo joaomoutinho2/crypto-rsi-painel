@@ -121,7 +121,8 @@ def analisar_oportunidades(exchange, moedas, modelo):
                 "MACD_diff": entrada["MACD_diff"].iloc[0],
                 "Volume_relativo": entrada["Volume_relativo"].iloc[0],
                 "BB_position": entrada["BB_position"].iloc[0],
-                "Previsao": int(previsao)
+                "Previsao": int(previsao),
+                "resultado": None  # 🔧 Adicionado para treino posterior
             }
 
             guardar_previsao_firestore(registo)
