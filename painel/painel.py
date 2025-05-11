@@ -22,8 +22,6 @@ from utils.firebase_config import iniciar_firebase
 from firebase_admin import firestore
 from bot.telegram_alert import enviar_telegram
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 # ✅ Inicializar Firestore com secrets do Streamlit
 db = iniciar_firebase(usando_secrets=True, secrets=st.secrets)
 
