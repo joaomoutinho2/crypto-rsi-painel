@@ -18,26 +18,34 @@ try:
     docs = db.collection("historico_previsoes").stream()
     registos = []
     campos_necessarios = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position", "resultado"]
+
     for doc in docs:
         data = doc.to_dict()
+
+        # Verificar se todos os campos necessários estão presentes
         faltam = [k for k in campos_necessarios if k not in data]
         if faltam:
-            print(f"⚠️ Documento ignorado: {doc.id} - Faltam: {faltam}")
+            print(f"⚠️ Documento ignorado: {doc.id} - Faltam campos: {faltam}")
             continue
+
+        # Verificar se os valores dos campos são válidos (não None ou NaN)
         valores = [data[k] for k in campos_necessarios]
         if any(v is None or (isinstance(v, float) and pd.isna(v)) for v in valores):
             print(f"⚠️ Documento ignorado: {doc.id} - Contém valores None ou NaN")
             continue
+
+        # Adicionar documento válido à lista de registos
         registos.append(data)
-        else:
-            print(f"⚠️ Documento ignorado: {doc.id} - Faltam campos obrigatórios.")
+
+    # Verificar se há registos válidos
+    if not registos:
+        print("❌ Nenhum registo válido encontrado no Firestore.")
+        exit()
+
+    print(f"📊 {len(registos)} registos carregados do Firestore para treino.")
+
 except Exception as e:
     print(f"❌ Erro ao carregar dados do Firestore: {e}")
-    exit()
-
-# ❗ Verificar se há dados suficientes
-if not registos:
-    print("❌ Nenhum registo válido encontrado no Firestore.")
     exit()
 
 df = pd.DataFrame(registos)
