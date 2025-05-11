@@ -17,11 +17,18 @@ except Exception as e:
 try:
     docs = db.collection("historico_previsoes").stream()
     registos = []
+    campos_necessarios = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position", "resultado"]
     for doc in docs:
         data = doc.to_dict()
-        # ⚠️ Verifica se todos os campos necessários existem
-        if all(k in data for k in ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position", "resultado"]):
-            registos.append(data)
+        faltam = [k for k in campos_necessarios if k not in data]
+        if faltam:
+            print(f"⚠️ Documento ignorado: {doc.id} - Faltam: {faltam}")
+            continue
+        valores = [data[k] for k in campos_necessarios]
+        if any(v is None or (isinstance(v, float) and pd.isna(v)) for v in valores):
+            print(f"⚠️ Documento ignorado: {doc.id} - Contém valores None ou NaN")
+            continue
+        registos.append(data)
         else:
             print(f"⚠️ Documento ignorado: {doc.id} - Faltam campos obrigatórios.")
 except Exception as e:
