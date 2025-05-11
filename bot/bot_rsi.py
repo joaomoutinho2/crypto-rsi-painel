@@ -48,7 +48,17 @@ def enviar_telegram(mensagem):
         print("❌ Erro ao enviar:", e)
 
 def guardar_previsao_firestore(registo):
-    db.collection("historico_previsoes").add(registo)
+    try:
+        campos_necessarios = ["Data", "Moeda", "RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position", "Previsao", "resultado"]
+        faltam = [campo for campo in campos_necessarios if campo not in registo]
+        if faltam:
+            print(f"❌ Não foi possível guardar o registo. Faltam campos: {faltam}")
+            return
+
+        db.collection("historico_previsoes").add(registo)
+        print("✅ Previsão guardada no Firestore:", registo)
+    except Exception as e:
+        print(f"❌ Erro ao guardar previsão no Firestore: {e}")
 
 def guardar_estrategia_firestore(moeda, direcao, preco, sinais, rsi, variacao):
     estrategia = {
@@ -206,11 +216,16 @@ def acompanhar_posicoes(exchange, posicoes, forcar_resumo=False):
 
 def atualizar_documentos_firestore():
     try:
+        # Obter todos os documentos da coleção "historico_previsoes"
         docs = db.collection("historico_previsoes").stream()
         for doc in docs:
             data = doc.to_dict()
+            # Verificar se o campo "resultado" está ausente
             if "resultado" not in data:
-                db.collection("historico_previsoes").document(doc.id).update({"resultado": None})
+                # Atualizar o documento adicionando o campo "resultado" com valor padrão (None)
+                db.collection("historico_previsoes").document(doc.id).set(
+                    {"resultado": None}, merge=True
+                )
                 print(f"✅ Documento atualizado: {doc.id} - Campo 'resultado' adicionado.")
     except Exception as e:
         print(f"❌ Erro ao atualizar documentos no Firestore: {e}")
@@ -227,6 +242,10 @@ def iniciar_bot():
 
     while True:
         print(f"🔄 [{datetime.now().strftime('%H:%M:%S')}] Ciclo iniciado.")
+        # Atualizar documentos no Firestore para adicionar o campo "resultado"
+        atualizar_documentos_firestore()
+
+        # Continuar com o processamento normal
         analisar_oportunidades(exchange, moedas, modelo)
         acompanhar_posicoes(exchange, carregar_posicoes())
         print("⏸️ Esperar 1 hora...\n")
