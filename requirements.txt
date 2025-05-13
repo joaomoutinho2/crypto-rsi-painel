@@ -9,4 +9,6 @@ flask
 scikit-learn
 joblib
 firebase_admin
-google-cloud-firestore
+google-cloud-firestore==2.11.1
+grpcio==1.62.1
+grpcio-status==1.62.1

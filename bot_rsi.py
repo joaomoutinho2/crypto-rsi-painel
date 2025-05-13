@@ -100,7 +100,11 @@ def guardar_estrategia_firestore(moeda, direcao, preco, sinais, rsi, variacao):
 def carregar_posicoes():
     if db is None:
         return []
-    return [doc.to_dict() for doc in db.collection("posicoes").stream()]
+    try:
+        return [doc.to_dict() for doc in db.collection("posicoes").stream()]
+    except Exception as e:
+        print(f"❌ Erro carregar posições: {e}")
+        return []
 
 # --------------------------------------------------
 # Core do bot
