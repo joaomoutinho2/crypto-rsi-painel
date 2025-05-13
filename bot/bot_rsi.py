@@ -195,7 +195,6 @@ def atualizar_documentos_firestore():
     except Exception as e:
         print(f"❌ Erro ao atualizar docs: {e}")
 
-
 def iniciar_bot():
     exchange = ccxt.kucoin()
     exchange.load_markets()
@@ -206,9 +205,10 @@ def iniciar_bot():
         acompanhar_posicoes(exchange, carregar_posicoes())
         time.sleep(3600)
 
+threading.Thread(target=iniciar_bot, daemon=True).start()
+
 # 🟢 Execução principal
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print(f"🌐 Iniciando Flask na porta {port}")
-    threading.Thread(target=iniciar_bot, daemon=True).start()
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
