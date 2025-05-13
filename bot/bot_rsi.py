@@ -268,6 +268,10 @@ def treinar_modelo():
 
 # 🟢 Mantém o bot a correr em loop, e o Flask a responder ao Render
 if __name__ == "__main__":
-    threading.Thread(target=iniciar_bot).start()  # inicia o bot num ciclo infinito
-    port = int(os.environ.get("PORT", 10000))     # Render define PORT automaticamente
-    app.run(host="0.0.0.0", port=port)             # Mantém a porta aberta para evitar timeout
+    port = int(os.environ.get("PORT", 10000))
+
+    # ✅ Bot corre num thread secundário daemon
+    threading.Thread(target=iniciar_bot, daemon=True).start()
+
+    # ✅ Flask corre na thread principal
+    app.run(host="0.0.0.0", port=port)
