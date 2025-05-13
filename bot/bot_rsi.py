@@ -275,4 +275,4 @@ if __name__ == "__main__":
 
     # 🚪 Flask corre na thread principal e abre a porta esperada
     print(f"🌐 A iniciar Flask na porta {port}...")
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
