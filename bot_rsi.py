@@ -19,14 +19,14 @@ from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
 
-from utils.config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-from utils.firebase_config import iniciar_firebase
-from modelo.treino_modelo_firebase import modelo as modelo_inicial
+from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+from firebase_config import iniciar_firebase
+from treino_modelo_firebase import modelo as modelo_inicial
 
 # 🔹 Variáveis globais preenchidas na thread do bot
 db = None
 modelo = None
-MODELO_PATH = "modelo/modelo_treinado.pkl"
+MODELO_PATH = "modelo_treinado.pkl"
 
 # Constantes originais
 QUEDA_LIMITE = 0.95
@@ -48,7 +48,7 @@ def home():
 def treinar_modelo():
     global modelo
     try:
-        from modelo.treino_modelo_firebase import atualizar_resultados_firestore, modelo as novo
+        from treino_modelo_firebase import atualizar_resultados_firestore, modelo as novo
         atualizar_resultados_firestore()
         modelo = novo
         return "✅ Modelo treinado com sucesso!"

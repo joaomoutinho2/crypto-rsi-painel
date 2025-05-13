@@ -17,10 +17,10 @@ from ta.volatility import BollingerBands
 
 from streamlit_autorefresh import st_autorefresh
 
-from utils.config import MOEDAS, LOG_PATH
-from utils.firebase_config import iniciar_firebase
+from config import MOEDAS, LOG_PATH
+from firebase_config import iniciar_firebase
 from firebase_admin import firestore
-from bot.telegram_alert import enviar_telegram
+from telegram_alert import enviar_telegram
 
 # ✅ Inicializar Firestore com secrets do Streamlit
 db = iniciar_firebase(usando_secrets=True, secrets=st.secrets)

@@ -1,5 +1,5 @@
 import requests
-from utils.config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
 def enviar_telegram(mensagem):
     """

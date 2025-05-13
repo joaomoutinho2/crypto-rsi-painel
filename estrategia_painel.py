@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from utils.firebase_config import iniciar_firebase
+from firebase_config import iniciar_firebase
 
 st.set_page_config(page_title="📋 Estratégias Detetadas", layout="wide")
 st.title("📋 Histórico de Estratégias Automáticas")

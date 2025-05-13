@@ -4,7 +4,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 import joblib
 from datetime import datetime
-from utils.firebase_config import iniciar_firebase
+from firebase_config import iniciar_firebase
 
 # 🔥 Inicializar Firestore
 try:
