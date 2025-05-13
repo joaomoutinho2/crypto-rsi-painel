@@ -10,4 +10,3 @@ scikit-learn
 joblib
 firebase_admin
 google-cloud-firestore
-gunicorn
