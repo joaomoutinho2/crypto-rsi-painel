@@ -92,45 +92,6 @@ secao = st.sidebar.radio("📂 Secções", [
 
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
 
-# ⚠️ NOVO BLOCO para venda manual por input de preço
-if secao == "💼 Minhas Posições":
-    st.title("💼 Registo de Posições Pessoais")
-    posicoes = carregar_posicoes()
-
-    if posicoes:
-        st.subheader("💸 Vender uma Posição Manualmente")
-        index = st.number_input("Seleciona o índice da posição para vender", min_value=0, max_value=len(posicoes)-1, step=1, key="vender_index")
-        pos = posicoes[index]
-
-        preco_venda_manual = st.number_input("Preço de venda (USDT)", min_value=0.0, key="preco_manual")
-        if st.button("💰 Confirmar Venda Manual"):
-            if preco_venda_manual == 0:
-                st.warning("⚠️ Introduz um preço válido para a venda.")
-            else:
-                preco_entrada = pos["preco_entrada"]
-                investido = pos["montante"]
-                valor_final = preco_venda_manual * (investido / preco_entrada)
-                lucro = valor_final - investido
-                percent = (lucro / investido) * 100
-
-                registro = {
-                    "moeda": pos["moeda"],
-                    "data_venda": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "preco_venda": preco_venda_manual,
-                    "preco_entrada": preco_entrada,
-                    "investido": investido,
-                    "valor_final": round(valor_final, 2),
-                    "lucro": round(lucro, 2),
-                    "percentual": round(percent, 2)
-                }
-
-                guardar_venda(registro)
-                del posicoes[index]
-                guardar_posicoes(posicoes)
-                st.success("✅ Venda registada manualmente com sucesso!")
-                st.rerun()
-
-
 # ============================
 # 📊 ÚLTIMO MODELO TREINADO
 # ============================
@@ -376,51 +337,61 @@ elif secao == "💼 Minhas Posições":
         st.download_button("📥 Exportar posições", csv, "posicoes.csv", "text/csv")
     else:
         st.info("Ainda não registaste nenhuma posição.")
+       
+        # ✅ Reforçar posição com atualização Firestore
+        st.markdown("### ➕ Reforçar Posição")
+        novo_montante = st.number_input("Montante adicional (€)", min_value=0.0, key="reforco_montante")
+        novo_preco = st.number_input("Preço da nova compra (USDT)", min_value=0.0, key="reforco_preco")
+        if st.button("Aplicar Reforço", key="botao_reforco"):
+            if novo_montante > 0 and novo_preco > 0:
+                antigo_montante = pos["montante"]
+                antigo_preco = pos["preco_entrada"]
 
-        # Reforçar posição
-        with st.expander("➕ Reforçar esta posição"):
-            novo_montante = st.number_input("Montante adicional (€)", min_value=0.0, key="reforco_montante")
-            novo_preco = st.number_input("Preço da nova compra (USDT)", min_value=0.0, key="reforco_preco")
-            if st.button("Aplicar Reforço"):
-                if novo_montante > 0 and novo_preco > 0:
-                    antigo_montante = pos["montante"]
-                    antigo_preco = pos["preco_entrada"]
-                    total_valor = (antigo_montante / antigo_preco) + (novo_montante / novo_preco)
-                    novo_total_investido = antigo_montante + novo_montante
-                    novo_preco_medio = novo_total_investido / total_valor
-                    pos["montante"] = round(novo_total_investido, 2)
-                    pos["preco_entrada"] = round(novo_preco_medio, 4)
-                    guardar_posicoes(posicoes)
-                    st.success("✅ Reforço aplicado com sucesso!")
-                    st.rerun()
+                total_valor = (antigo_montante / antigo_preco) + (novo_montante / novo_preco)
+                novo_total_investido = antigo_montante + novo_montante
+                novo_preco_medio = novo_total_investido / total_valor
 
-            if st.button("💰 Vendi esta posição"):
-                try:
-                    ticker = ccxt.kucoin().fetch_ticker(pos["moeda"])
-                    preco_atual = ticker["last"]
-                    investido = pos["montante"]
-                    preco_entrada = pos["preco_entrada"]
-                    valor_final = preco_atual * (investido / preco_entrada)
-                    lucro = valor_final - investido
-                    percent = (lucro / investido) * 100
+                pos["montante"] = round(novo_total_investido, 2)
+                pos["preco_entrada"] = round(novo_preco_medio, 4)
 
-                    registro = {
-                        "moeda": pos["moeda"],
-                        "data_venda": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "preco_venda": preco_atual,
-                        "preco_entrada": preco_entrada,
-                        "investido": investido,
-                        "valor_final": round(valor_final, 2),
-                        "lucro": round(lucro, 2),
-                        "percentual": round(percent, 2)
-                    }
-                    guardar_venda(registro)
-                    del posicoes[index]
-                    guardar_posicoes(posicoes)
-                    st.success("✅ Posição vendida e registada no histórico.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao vender posição: {e}")
+                posicoes[index] = pos
+                guardar_posicoes(posicoes)
+                st.success("✅ Reforço aplicado com sucesso!")
+                st.rerun()
+
+# ⚠️ NOVO BLOCO para venda manual por input de preço
+    if posicoes:
+        st.subheader("💸 Vender uma Posição Manualmente")
+        index = st.number_input("Seleciona o índice da posição para vender", min_value=0, max_value=len(posicoes)-1, step=1, key="vender_index")
+        pos = posicoes[index]
+
+        preco_venda_manual = st.number_input("Preço de venda (USDT)", min_value=0.0, key="preco_manual")
+        if st.button("💰 Confirmar Venda Manual"):
+            if preco_venda_manual == 0:
+                st.warning("⚠️ Introduz um preço válido para a venda.")
+            else:
+                preco_entrada = pos["preco_entrada"]
+                investido = pos["montante"]
+                valor_final = preco_venda_manual * (investido / preco_entrada)
+                lucro = valor_final - investido
+                percent = (lucro / investido) * 100
+
+                registro = {
+                    "moeda": pos["moeda"],
+                    "data_venda": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "preco_venda": preco_venda_manual,
+                    "preco_entrada": preco_entrada,
+                    "investido": investido,
+                    "valor_final": round(valor_final, 2),
+                    "lucro": round(lucro, 2),
+                    "percentual": round(percent, 2)
+                }
+
+                guardar_venda(registro)
+                del posicoes[index]
+                guardar_posicoes(posicoes)
+                st.success("✅ Venda registada manualmente com sucesso!")
+                st.rerun()
 
 # ============================
 # 📈 ESTRATÉGIAS
