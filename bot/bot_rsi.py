@@ -270,10 +270,9 @@ def treinar_modelo():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
 
-    # 🧵 Iniciar o bot em segundo plano
-    bot_thread = threading.Thread(target=iniciar_bot, daemon=True)
-    bot_thread.start()
+    # 🧵 Bot a correr no fundo como thread daemon
+    threading.Thread(target=iniciar_bot, daemon=True).start()
 
-    # 🚪 O Flask precisa estar na thread principal
+    # 🚪 Flask corre na thread principal e abre a porta esperada
     print(f"🌐 A iniciar Flask na porta {port}...")
     app.run(host="0.0.0.0", port=port)
