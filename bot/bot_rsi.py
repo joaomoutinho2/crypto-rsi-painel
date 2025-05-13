@@ -222,11 +222,3 @@ def atualizar_documentos_firestore():
 
 def iniciar_bot():
     global db, modelo
-
-    # 🔸 Inicializar Firebase
-    try:
-        db = iniciar_firebase()
-        print("✅ Firebase inicializado")
-    except Exception as e:
-        print(f"⚠️ Firebase: {e}")
-        db = None
