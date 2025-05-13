@@ -230,11 +230,3 @@ def iniciar_bot():
     except Exception as e:
         print(f"⚠️ Firebase: {e}")
         db = None
-
-    # 🔸 Carregar modelo
-    try:
-        modelo = modelo_inicial if modelo_inicial is not None else joblib.load(MODELO_PATH)
-        print("✅ Modelo carregado")
-    except Exception as e:
-        print(f"⚠️ Erro ao carregar modelo: {e}")
-        modelo = None
