@@ -332,12 +332,6 @@ elif secao == "💼 Minhas Posições":
             st.warning("❌ Posição removida.")
             st.rerun()
 
-        # Exportar posições
-        csv = df.drop(columns=["Index"]).to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Exportar posições", csv, "posicoes.csv", "text/csv")
-    else:
-        st.info("Ainda não registaste nenhuma posição.")
-       
         # ✅ Reforçar posição com atualização Firestore
         st.markdown("### ➕ Reforçar Posição")
         novo_montante = st.number_input("Montante adicional (€)", min_value=0.0, key="reforco_montante")
@@ -358,6 +352,12 @@ elif secao == "💼 Minhas Posições":
                 guardar_posicoes(posicoes)
                 st.success("✅ Reforço aplicado com sucesso!")
                 st.rerun()
+
+        # Exportar posições
+        csv = df.drop(columns=["Index"]).to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Exportar posições", csv, "posicoes.csv", "text/csv")
+    else:
+        st.info("Ainda não registaste nenhuma posição.")
 
 # ⚠️ NOVO BLOCO para venda manual por input de preço
     if posicoes:
