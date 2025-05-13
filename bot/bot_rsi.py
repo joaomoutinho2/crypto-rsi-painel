@@ -217,7 +217,7 @@ def acompanhar_posicoes(exchange, posicoes, forcar_resumo=False):
 def atualizar_documentos_firestore():
     try:
         # Obter todos os documentos da coleção "historico_previsoes"
-        docs = db.collection("historico_previsoes").stream()
+        docs = list(db.collection("historico_previsoes").stream())
         for doc in docs:
             data = doc.to_dict()
             # Verificar se o campo "resultado" está ausente
