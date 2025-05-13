@@ -10,12 +10,38 @@ from utils.firebase_config import iniciar_firebase
 try:
     db = iniciar_firebase()
 except Exception as e:
-    print(f"❌ Erro ao inicializar o Firestore: {e}")
+    print(f"❌ Erro ao inicializar Firestore: {e}")
+    exit()
+
+# 📂 Nome da coleção a corrigir
+colecao = "historico_previsoes"
+
+# 🔁 Atualizar documentos que não tenham o campo 'resultado'
+try:
+    docs = db.collection(colecao).stream()
+    total = 0
+    atualizados = 0
+
+    for doc in docs:
+        total += 1
+        data = doc.to_dict()
+        doc_ref = doc.reference
+
+        if "resultado" not in data:
+            print(f"🛠️ Atualizando {doc.id} - campo 'resultado' adicionado com valor 'pendente'")
+            doc_ref.update({"resultado": "pendente"})
+            atualizados += 1
+
+    print(f"\n📊 {total} documentos verificados.")
+    print(f"✅ {atualizados} documentos atualizados com 'resultado: pendente'.")
+
+except Exception as e:
+    print(f"❌ Erro ao processar documentos: {e}")
     exit()
 
 # 📅 Ler dados reais do Firebase
 try:
-    docs = db.collection("historico_previsoes").stream()
+    docs = db.collection(colecao).stream()
     registos = []
     campos_necessarios = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position", "resultado"]
 
@@ -49,7 +75,6 @@ except Exception as e:
     exit()
 
 df = pd.DataFrame(registos)
-print(f"📊 {len(df)} registos carregados do Firestore para treino.")
 
 # 🎯 Preparar dados
 features = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position"]
@@ -103,16 +128,17 @@ except Exception as e:
     exit()
 
 # ☁️ Guardar metadados do modelo no Firestore
-resultado_doc = {
-    "data_treino": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    "features": features,
-    "modelo": "RandomForestClassifier",
-    "acuracia": acc,
-    "relatorio": relatorio,
-    "matriz_confusao": matriz
-}
-
 try:
+    resultado_doc = {
+        "data_treino": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "features": features,
+        "modelo": "RandomForestClassifier",
+        "acuracia": acc,
+        "relatorio": relatorio,
+        "matriz_confusao": matriz,
+        "resultado": "treinado"  # ✅ Campo incluído para evitar erro no painel
+    }
+
     db.collection("modelos_treinados").add(resultado_doc)
     print("📤 Resultados do modelo guardados em Firestore (coleção modelos_treinados).")
 except Exception as e:
