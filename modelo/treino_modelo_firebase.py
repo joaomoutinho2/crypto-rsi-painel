@@ -18,7 +18,7 @@ colecao = "historico_previsoes"
 
 # 🔁 Atualizar documentos que não tenham o campo 'resultado'
 try:
-    docs = db.collection(colecao).stream()
+    docs = db.collection(colecao).get()
     total = 0
     atualizados = 0
 
