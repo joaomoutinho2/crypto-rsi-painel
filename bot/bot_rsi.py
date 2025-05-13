@@ -223,9 +223,18 @@ def atualizar_documentos_firestore():
 def iniciar_bot():
     global db, modelo
 
-    # 🔸 Inicializar Firebase só aqui
+    # 🔸 Inicializar Firebase
     try:
         db = iniciar_firebase()
         print("✅ Firebase inicializado")
     except Exception as e:
-        print(f"⚠️ Firebase: {
+        print(f"⚠️ Firebase: {e}")
+        db = None
+
+    # 🔸 Carregar modelo
+    try:
+        modelo = modelo_inicial if modelo_inicial is not None else joblib.load(MODELO_PATH)
+        print("✅ Modelo carregado")
+    except Exception as e:
+        print(f"⚠️ Erro ao carregar modelo: {e}")
+        modelo = None
