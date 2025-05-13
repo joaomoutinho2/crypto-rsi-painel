@@ -69,7 +69,8 @@ def carregar_modelo_treinado():
                 st.warning(f"⚠️ Documento ignorado: {doc.id} - Faltam campos: ['resultado']")
                 continue
             return doc
-        return Noneexcept Exception as e:
+        return Noneexcept Exception as  e:
+    except Exception as e:
         st.error(f"❌ Erro ao carregar dados do modelo treinado: {e}")
         return None
 
