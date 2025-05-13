@@ -209,6 +209,6 @@ threading.Thread(target=iniciar_bot, daemon=True).start()
 
 # 🟢 Execução principal
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 8080))
     print(f"🌐 Iniciando Flask na porta {port}")
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
