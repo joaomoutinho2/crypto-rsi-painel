@@ -60,7 +60,7 @@ def carregar_historico_vendas():
         st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
         return []
 
-def carregar_modelo_treinado():def carregar_modelo_treinado():
+def carregar_modelo_treinado():
     try:
         docs = db.collection("modelos_treinados").order_by("data_treino", direction=firestore.Query.DESCENDING).limit(5).stream()
         for doc in docs:
