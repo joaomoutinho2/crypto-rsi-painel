@@ -349,7 +349,15 @@ def thread_bot():
         from firebase_config import iniciar_firebase
 
         print("🔍 [2] A importar modelo_inicial...")
-        from treino_modelo_firebase import modelo as modelo_inicial
+        try:
+            from treino_modelo_firebase import modelo as modelo_inicial
+            print("✅ modelo_inicial importado com sucesso.")
+        except Exception as e:
+            print(f"❌ Erro ao importar modelo_inicial: {e}")
+            import traceback
+            traceback.print_exc()
+            modelo_inicial = None  # fallback
+
 
         print("🧠 Thread do bot iniciada.")
 
