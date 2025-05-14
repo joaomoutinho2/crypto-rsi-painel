@@ -278,11 +278,11 @@ def avaliar_resultados(exchange):
                 variacao = (preco_atual - preco_entrada) / preco_entrada
 
                 if variacao >= OBJETIVO_LUCRO:
-                    resultado = 1  # ganho
+                    resultado = 1
                 elif variacao <= -LIMITE_PERDA:
-                    resultado = 0  # perda
+                    resultado = 0
                 else:
-                    continue  # ainda pendente
+                    continue
 
                 ref.set({"resultado": resultado}, merge=True)
                 atualizados += 1
@@ -294,9 +294,6 @@ def avaliar_resultados(exchange):
 
     except Exception as e:
         print(f"❌ Erro ao avaliar previsões: {e}")
-
-
-
 
 def acompanhar_posicoes(exchange, posicoes):
     global ULTIMO_RESUMO
