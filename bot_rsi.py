@@ -346,6 +346,8 @@ def thread_bot():
         from firebase_config import iniciar_firebase
         from treino_modelo_firebase import modelo as modelo_inicial
 
+        print("🧠 Thread do bot iniciada.")
+
         db = iniciar_firebase()
         print("✅ Firebase inicializado")
 
@@ -395,7 +397,12 @@ def thread_bot():
 # --------------------------------------------------
 
 if __name__ == "__main__":
+    # 🧠 Inicia o bot numa thread paralela
+    print("🚀 A iniciar thread do bot...")
     threading.Thread(target=thread_bot, daemon=True).start()
-    port = int(os.environ.get("PORT", 8080))
+
+    # 🌐 Inicia o servidor Flask (para manter o Render ativo)
+    port = int(os.environ.get("PORT", 10000))
     print(f"🌐 A ouvir em 0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
