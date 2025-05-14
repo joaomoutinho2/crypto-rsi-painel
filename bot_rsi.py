@@ -18,6 +18,8 @@ from flask import Flask
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
+from config import TIMEFRAME
+
 
 # 🔹 Constantes simples e globais
 db = None
@@ -144,13 +146,14 @@ def analisar_oportunidades(exchange, moedas):
                 "Volume_relativo": vol / vol_med,
                 "BB_position": (preco - bb_inf) / (bb_sup - bb_inf) if bb_sup > bb_inf else 0.5,
             }])
-            prev = bool(modelo.predict(entrada)[0]) if modelo else False
+            prev_array = modelo.predict(entrada) if modelo else [0]
+            prev = int(prev_array[0])  # garante que é int simples, não array
 
             reg = {
                 "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Moeda": moeda,
                 **entrada.iloc[0].to_dict(),
-                "Previsao": int(prev),
+                "Previsao": prev,  # agora é int simples
                 "resultado": None,
             }
             guardar_previsao_firestore(reg)
@@ -213,7 +216,6 @@ def thread_bot():
     try:
         from firebase_config import iniciar_firebase
         from treino_modelo_firebase import modelo as modelo_inicial
-        from config import TIMEFRAME
 
         db = iniciar_firebase()
         print("✅ Firebase inicializado")
