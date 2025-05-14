@@ -172,72 +172,20 @@ def carregar_posicoes():
 # --------------------------------------------------
 
 def analisar_oportunidades(exchange, moedas):
+    print("🧪 [DEBUG] analisar_oportunidades começou...")
     oportunidades = []
-    for moeda in moedas:
+
+    for moeda in moedas[:3]:  # testamos só 3 para ser mais rápido
+        print(f"🧪 [DEBUG] Analisando {moeda}")
         try:
-            candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
-            df = pd.DataFrame(candles, columns=["t", "open", "high", "low", "close", "volume"])
-            df["RSI"] = RSIIndicator(close=df["close"]).rsi()
-            df["EMA"] = EMAIndicator(close=df["close"]).ema_indicator()
-            macd_obj = MACD(close=df["close"])
-            df["MACD"] = macd_obj.macd()
-            df["MACD_signal"] = macd_obj.macd_signal()
-            df["vol_med"] = df["volume"].rolling(14).mean()
-            bb = BollingerBands(close=df["close"])
-            df["BB_inf"] = bb.bollinger_lband()
-            df["BB_sup"] = bb.bollinger_hband()
+            ...
+            print(f"🧪 [DEBUG] Prev: {prev}")
 
-            rsi = df["RSI"].iat[-1]
-            preco = df["close"].iat[-1]
-            ema = df["EMA"].iat[-1]
-            macd = df["MACD"].iat[-1]
-            macd_sig = df["MACD_signal"].iat[-1]
-            vol = df["volume"].iat[-1]
-            vol_med = df["vol_med"].iat[-1] or 1
-            bb_inf = df["BB_inf"].iat[-1]
-            bb_sup = df["BB_sup"].iat[-1]
-
-            entrada = pd.DataFrame([{ 
-                "RSI": rsi,
-                "EMA_diff": (preco - ema) / ema,
-                "MACD_diff": macd - macd_sig,
-                "Volume_relativo": vol / vol_med,
-                "BB_position": (preco - bb_inf) / (bb_sup - bb_inf) if bb_sup > bb_inf else 0.5,
-            }])
-            prev_array = modelo.predict(entrada) if modelo else [0]
-            try:
-                prev = int(prev_array[0])  # converte para int simples
-            except (ValueError, TypeError):
-                print(f"⚠️ Valor inesperado em previsão: {prev_array[0]}")
-                prev = 0  # fallback seguro
-
-            reg = {
-                "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "Moeda": moeda,
-                "preco_entrada": preco,  # preço no momento da previsão
-                **entrada.iloc[0].to_dict(),
-                "Previsao": prev,  # agora é int simples
-                "resultado": None,
-            }
-            guardar_previsao_firestore(reg)
-
-            if true:
-                sinais = ", ".join([s for s in [
-                    "RSI<30" if rsi < 30 else None,
-                    "preço>EMA" if preco > ema else None,
-                    "MACD>sinal" if macd > macd_sig else None,
-                    "vol alto" if vol > vol_med else None,
-                    "BB inf" if preco < bb_inf else None,
-                ] if s])
-                guardar_estrategia_firestore(moeda, "ENTRADA", preco, sinais, rsi, (preco - ema) / ema * 100)
-                oportunidades.append((abs(reg["MACD_diff"]), f"🚨 {moeda}: RSI={rsi:.2f} MACD={macd:.2f}/{macd_sig:.2f}"))
-
+            # FORÇA ALERTA
+            enviar_telegram(f"🔔 Alerta forçado para {moeda}")
         except Exception as exc:
-            print(f"⚠️  {moeda}: {exc}")
+            print(f"⚠️ Erro ao analisar {moeda}: {exc}")
 
-    oportunidades.sort(reverse=True)
-    for _, msg in oportunidades[:MAX_ALERTAS_POR_CICLO]:
-        enviar_telegram(mensagem)
 
 def avaliar_resultados(exchange):
     """
