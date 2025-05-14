@@ -441,55 +441,74 @@ elif secao == "📜 Histórico de Vendas":
 # 📊 DESEMPENHO DO BOT
 # ============================
 elif secao == "📊 Desempenho do Bot":
-    st.title("📊 Desempenho Histórico do Bot (Previsões)")
+    st.title("📊 Estado e Desempenho do Bot")
 
+    # 🛠️ Progresso do campo 'preco_entrada'
+    st.subheader("🛠️ Atualização de 'preco_entrada'")
+    try:
+        docs = db.collection("historico_previsoes").stream()
+        total = 0
+        com_preco = 0
+        sem_preco = 0
+
+        for doc in docs:
+            total += 1
+            data = doc.to_dict()
+            if "preco_entrada" in data:
+                com_preco += 1
+            else:
+                sem_preco += 1
+
+        if total > 0:
+            percent = com_preco / total
+            st.write(f"✅ {com_preco} com preço • ❌ {sem_preco} sem preço • Total: {total}")
+            st.progress(percent)
+
+            fig, ax = plt.subplots()
+            ax.pie([com_preco, sem_preco], labels=["Com preço", "Sem preço"], autopct='%1.1f%%', colors=["#4CAF50", "#F44336"])
+            ax.axis("equal")
+            st.pyplot(fig)
+        else:
+            st.info("Nenhum documento encontrado em historico_previsoes.")
+    except Exception as e:
+        st.error(f"❌ Erro ao verificar progresso de 'preco_entrada': {e}")
+
+    # 🎯 Acertos vs erros do modelo
+    st.subheader("🎯 Taxa de Acerto do Bot")
     try:
         docs = db.collection("historico_previsoes").stream()
         dados = [doc.to_dict() for doc in docs if "Previsao" in doc.to_dict() and "resultado" in doc.to_dict()]
-        if dados:
-            df = pd.DataFrame(dados)
-            df = df[df["resultado"].isin([0, 1])]  # ignora pendentes
+        df = pd.DataFrame(dados)
+        df = df[df["resultado"].isin([0, 1])]
+        df["acertou"] = df["Previsao"] == df["resultado"]
 
-            # 📊 Gráfico de acertos vs falhas
-            st.subheader("🎯 Taxa de Acerto do Bot")
-            df["acertou"] = df["Previsao"] == df["resultado"]
-            acertos = df["acertou"].value_counts().rename(index={True: "Acertos", False: "Erros"})
-            st.bar_chart(acertos)
+        acertos = df["acertou"].value_counts().rename(index={True: "Acertos", False: "Erros"})
+        st.bar_chart(acertos)
 
-            # 📈 Desempenho por moeda
-            st.subheader("📈 Acertos por Moeda")
-            acertos_moeda = df.groupby("Moeda")["acertou"].mean().sort_values(ascending=False)
-            st.dataframe(acertos_moeda.map(lambda x: f"{x:.2%}"), use_container_width=True)
+        st.subheader("📈 Acertos por Moeda")
+        acertos_moeda = df.groupby("Moeda")["acertou"].mean().sort_values(ascending=False)
+        st.dataframe(acertos_moeda.map(lambda x: f"{x:.2%}"), use_container_width=True)
 
-            # 📅 Evolução temporal (opcional)
-            st.subheader("📅 Previsões ao Longo do Tempo")
-            df["Data"] = pd.to_datetime(df["Data"])
-            historico = df.groupby(df["Data"].dt.date)["acertou"].mean()
-            st.line_chart(historico)
-            # ============================
-            # 💰 LUCRO ACUMULADO POR MOEDA
-            # ============================
-            st.subheader("💰 Lucro Acumulado por Moeda")
+        st.subheader("📅 Previsões ao Longo do Tempo")
+        df["Data"] = pd.to_datetime(df["Data"])
+        historico = df.groupby(df["Data"].dt.date)["acertou"].mean()
+        st.line_chart(historico)
 
-            try:
-                vendas = db.collection("historico_vendas").stream()
-                vendas_dados = [doc.to_dict() for doc in vendas if "moeda" in doc.to_dict() and "lucro" in doc.to_dict()]
-
-                if vendas_dados:
-                    df_vendas = pd.DataFrame(vendas_dados)
-                    df_vendas["lucro"] = pd.to_numeric(df_vendas["lucro"], errors="coerce")
-                    lucro_moeda = df_vendas.groupby("moeda")["lucro"].sum().sort_values(ascending=False)
-
-                    st.bar_chart(lucro_moeda)
-                    st.dataframe(lucro_moeda.rename("Lucro Total (USDT)").map(lambda x: f"{x:.2f}"), use_container_width=True)
-                else:
-                    st.info("Ainda não há vendas registadas.")
-            except Exception as e:
-                st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
-        else:
-            st.info("Ainda não há previsões com resultados avaliados.")
     except Exception as e:
         st.error(f"❌ Erro ao carregar desempenho: {e}")
 
-
-
+    # 💰 Lucro por moeda
+    st.subheader("💰 Lucro Acumulado por Moeda")
+    try:
+        vendas = db.collection("historico_vendas").stream()
+        vendas_dados = [doc.to_dict() for doc in vendas if "moeda" in doc.to_dict() and "lucro" in doc.to_dict()]
+        if vendas_dados:
+            df_vendas = pd.DataFrame(vendas_dados)
+            df_vendas["lucro"] = pd.to_numeric(df_vendas["lucro"], errors="coerce")
+            lucro_moeda = df_vendas.groupby("moeda")["lucro"].sum().sort_values(ascending=False)
+            st.bar_chart(lucro_moeda)
+            st.dataframe(lucro_moeda.rename("Lucro Total (USDT)").map(lambda x: f"{x:.2f}"), use_container_width=True)
+        else:
+            st.info("Ainda não há vendas registadas.")
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
