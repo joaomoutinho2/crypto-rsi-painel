@@ -236,19 +236,11 @@ def thread_bot():
 # Arranque principal (Render exige app.run)
 # --------------------------------------------------
 
-# 1. Levanta já o Flask (porta aberta imediatamente)
-port = int(os.environ.get("PORT", 8080))
-print(f"🌐 A ouvir em 0.0.0.0:{port}")
-threading.Thread(
-    target=app.run,
-    kwargs=dict(host="0.0.0.0", port=port, debug=False, use_reloader=False),
-    daemon=True
-).start()
+if __name__ == "__main__":
+    # 1️⃣ Arranca o bot em segundo plano
+    threading.Thread(target=thread_bot, daemon=True).start()
 
-# 2. Só depois arranca o bot
-threading.Thread(target=thread_bot, daemon=True).start()
-
-# 3. Mantém o processo vivo
-while True:
-    time.sleep(86400)
-
+    # 2️⃣ Arranca o Flask no processo principal (obrigatório para Render)
+    port = int(os.environ.get("PORT", 8080))
+    print(f"🌐 A ouvir em 0.0.0.0:{port}")
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
