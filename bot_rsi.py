@@ -343,17 +343,19 @@ def atualizar_documentos_firestore():
 import traceback  # <- importa no topo do ficheiro, se ainda não estiver
 
 def thread_bot():
+    import traceback
     global db, modelo
+
     try:
         print("🚀 A iniciar thread do bot...")
 
+        # 🔹 Importar e iniciar Firebase
         print("🔍 [1] A importar firebase_config...")
         try:
             from firebase_config import iniciar_firebase
             print("✅ firebase_config importado.")
         except Exception as e:
             print(f"❌ Erro ao importar firebase_config: {e}")
-            import traceback
             traceback.print_exc()
             return
 
@@ -363,17 +365,16 @@ def thread_bot():
             print("✅ Firebase inicializado.")
         except Exception as e:
             print(f"❌ Erro ao iniciar Firebase: {e}")
-            import traceback
             traceback.print_exc()
             return
 
+        # 🔹 Importar modelo treinado
         print("🔍 [2] A importar modelo_inicial...")
         try:
             from treino_modelo_firebase import modelo as modelo_inicial
             print("✅ modelo_inicial importado.")
         except Exception as e:
             print(f"❌ Erro ao importar modelo_inicial: {e}")
-            import traceback
             traceback.print_exc()
             modelo_inicial = None
 
@@ -381,19 +382,22 @@ def thread_bot():
         modelo = modelo_inicial if modelo_inicial is not None else joblib.load(MODELO_PATH)
         print("✅ Modelo carregado")
 
+        # 🔔 Mensagem de teste
+        print("📨 Enviando teste para Telegram...")
         enviar_telegram("🔔 Teste manual logo após iniciar bot.")
 
+        # 🔹 Exchange
         exchange = ccxt.kucoin({
             "enableRateLimit": True,
             "options": {"adjustForTimeDifference": True},
         })
         exchange.load_markets()
         moedas = [s for s in exchange.symbols if s.endswith("/USDT")]
-
         print(f"🔁 {len(moedas)} moedas carregadas.")
         if not moedas:
             enviar_telegram("⚠️ Nenhuma moeda USDT encontrada na exchange.")
 
+        # 🔁 Loop principal
         while True:
             global ULTIMO_TREINO
             agora = datetime.now()
@@ -421,8 +425,6 @@ def thread_bot():
         except Exception as te:
             print(f"⚠️ Também falhou ao enviar mensagem Telegram: {te}")
 
-
-
 # --------------------------------------------------
 # Arranque principal — obrigatoriamente com app.run
 # --------------------------------------------------
@@ -436,4 +438,3 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print(f"🌐 A ouvir em 0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-
