@@ -93,7 +93,8 @@ secao = st.sidebar.radio("📂 Secções", [
     "💼 Minhas Posições",
     "📈 Estratégias",
     "📜 Histórico de Vendas",
-    "📊 Último Modelo Treinado"
+    "📊 Último Modelo Treinado"~
+    "📊 Desempenho do Bot"
 ])
 
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
@@ -435,5 +436,41 @@ elif secao == "📜 Histórico de Vendas":
             st.info("Nenhuma venda registada ainda.")
     except Exception as e:
         st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
+
+# ============================
+# 📊 DESEMPENHO DO BOT
+# ============================
+elif secao == "📊 Desempenho do Bot":
+    st.title("📊 Desempenho Histórico do Bot (Previsões)")
+
+    try:
+        docs = db.collection("historico_previsoes").stream()
+        dados = [doc.to_dict() for doc in docs if "Previsao" in doc.to_dict() and "resultado" in doc.to_dict()]
+        if dados:
+            df = pd.DataFrame(dados)
+            df = df[df["resultado"].isin([0, 1])]  # ignora pendentes
+
+            # 📊 Gráfico de acertos vs falhas
+            st.subheader("🎯 Taxa de Acerto do Bot")
+            df["acertou"] = df["Previsao"] == df["resultado"]
+            acertos = df["acertou"].value_counts().rename(index={True: "Acertos", False: "Erros"})
+            st.bar_chart(acertos)
+
+            # 📈 Desempenho por moeda
+            st.subheader("📈 Acertos por Moeda")
+            acertos_moeda = df.groupby("Moeda")["acertou"].mean().sort_values(ascending=False)
+            st.dataframe(acertos_moeda.map(lambda x: f"{x:.2%}"), use_container_width=True)
+
+            # 📅 Evolução temporal (opcional)
+            st.subheader("📅 Previsões ao Longo do Tempo")
+            df["Data"] = pd.to_datetime(df["Data"])
+            historico = df.groupby(df["Data"].dt.date)["acertou"].mean()
+            st.line_chart(historico)
+
+        else:
+            st.info("Ainda não há previsões com resultados avaliados.")
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar desempenho: {e}")
+
 
 
