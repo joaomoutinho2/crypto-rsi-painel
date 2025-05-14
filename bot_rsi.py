@@ -147,7 +147,11 @@ def analisar_oportunidades(exchange, moedas):
                 "BB_position": (preco - bb_inf) / (bb_sup - bb_inf) if bb_sup > bb_inf else 0.5,
             }])
             prev_array = modelo.predict(entrada) if modelo else [0]
-            prev = int(prev_array[0])  # garante que é int simples, não array
+            try:
+                prev = int(prev_array[0])  # converte para int simples
+            except (ValueError, TypeError):
+                print(f"⚠️ Valor inesperado em previsão: {prev_array[0]}")
+                prev = 0  # fallback seguro
 
             reg = {
                 "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -181,20 +185,31 @@ def acompanhar_posicoes(exchange, posicoes):
     global ULTIMO_RESUMO
     agora = datetime.now()
     linhas = []
+
     for pos in posicoes:
         try:
             ticker = exchange.fetch_ticker(pos["moeda"])
             preco_atual = ticker["last"]
-            valor_atual = preco_atual * (pos["montante"] / pos["preco_entrada"])
-            lucro = valor_atual - pos["montante"]
-            percent = (lucro / pos["montante"]) * 100
-            linhas.append(f"{pos['moeda']}: {percent:.2f}%")
-        except Exception:
-            pass
+            preco_entrada = pos["preco_entrada"]
+            montante = pos["montante"]
+
+            valor_atual = preco_atual * (montante / preco_entrada)
+            lucro = valor_atual - montante
+            percent = (lucro / montante) * 100
+
+            linhas.append(
+                f"{pos['moeda']}: {percent:+.2f}% | Entrada: {preco_entrada:.4f} | Atual: {preco_atual:.4f} | Lucro: {lucro:+.2f} USDT"
+            )
+
+        except Exception as e:
+            print(f"⚠️ Erro ao acompanhar {pos['moeda']}: {e}")
+
     if (agora - ULTIMO_RESUMO).total_seconds() > INTERVALO_RESUMO_HORAS * 3600:
         if linhas:
-            enviar_telegram("\n".join(linhas))
+            mensagem = "📈 Atualização de posições:\n" + "\n".join(linhas)
+            enviar_telegram(mensagem)
         ULTIMO_RESUMO = agora
+
 
 
 def atualizar_documentos_firestore():
