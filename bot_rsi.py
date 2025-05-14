@@ -31,6 +31,9 @@ OBJETIVO_PADRAO = 10
 INTERVALO_RESUMO_HORAS = 2
 MAX_ALERTAS_POR_CICLO = 5
 ULTIMO_RESUMO = datetime.now() - pd.to_timedelta(INTERVALO_RESUMO_HORAS, unit="h")
+OBJETIVO_LUCRO = 0.02       # 2%
+LIMITE_PERDA = 0.02         # 2%
+
 
 # --------------------------------------------------
 # Flask App
@@ -73,6 +76,59 @@ def enviar_telegram(mensagem):
 # --------------------------------------------------
 # Firestore helpers
 # --------------------------------------------------
+
+from datetime import datetime, timedelta
+import time
+
+def atualizar_precos_de_entrada(exchange, timeframe="1h"):
+    """
+    Atualiza todos os documentos sem 'preco_entrada' com base no candle mais próximo da data da previsão.
+    """
+    print("🛠️ Atualizando documentos antigos com campo 'preco_entrada'...")
+
+    try:
+        docs = db.collection("historico_previsoes").stream()
+        atualizados = 0
+        total = 0
+
+        for doc in docs:
+            data = doc.to_dict()
+            ref = doc.reference
+            total += 1
+
+            if "preco_entrada" in data:
+                continue
+
+            moeda = data.get("Moeda")
+            data_str = data.get("Data")
+
+            try:
+                if not moeda or not data_str:
+                    continue
+
+                dt = datetime.strptime(data_str, "%Y-%m-%d %H:%M:%S")
+                timestamp = int(time.mktime((dt - timedelta(minutes=5)).timetuple())) * 1000  # começa 5min antes
+
+                candles = exchange.fetch_ohlcv(moeda, timeframe=timeframe, since=timestamp, limit=5)
+                if not candles:
+                    print(f"⚠️ Sem candles para {moeda} em {data_str}")
+                    continue
+
+                # Encontrar o candle mais próximo
+                candle_proximo = min(candles, key=lambda x: abs(x[0] - int(dt.timestamp() * 1000)))
+                preco_close = candle_proximo[4]
+
+                ref.set({"preco_entrada": preco_close}, merge=True)
+                print(f"✅ {moeda} @ {data_str} → {preco_close:.4f}")
+                atualizados += 1
+
+            except Exception as e:
+                print(f"⚠️ Erro em {moeda} @ {data_str}: {e}")
+
+        print(f"\n📊 {atualizados}/{total} documentos atualizados com 'preco_entrada'.")
+
+    except Exception as e:
+        print(f"❌ Erro ao atualizar preços de entrada: {e}")
 
 def guardar_previsao_firestore(reg):
     if db is None:
@@ -156,6 +212,7 @@ def analisar_oportunidades(exchange, moedas):
             reg = {
                 "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Moeda": moeda,
+                "preco_entrada": preco,  # preço no momento da previsão
                 **entrada.iloc[0].to_dict(),
                 "Previsao": prev,  # agora é int simples
                 "resultado": None,
@@ -179,6 +236,55 @@ def analisar_oportunidades(exchange, moedas):
     oportunidades.sort(reverse=True)
     for _, msg in oportunidades[:MAX_ALERTAS_POR_CICLO]:
         enviar_telegram(msg)
+
+def avaliar_resultados(exchange):
+    """
+    Atualiza documentos com resultado 'pendente' ou None para 0 (perda) ou 1 (ganho)
+    com base no preço atual da moeda.
+    """
+    print("📈 A avaliar previsões pendentes...")
+
+    try:
+        docs = db.collection("historico_previsoes").where("resultado", "in", ["pendente", None]).stream()
+        atualizados = 0
+        total = 0
+
+        for doc in docs:
+            total += 1
+            data = doc.to_dict()
+            ref = doc.reference
+
+            try:
+                moeda = data["Moeda"]
+                preco_entrada = float(data.get("preco_entrada") or 0)
+                if preco_entrada == 0:
+                    print(f"⚠️ Ignorado {moeda}: preço de entrada inválido.")
+                    continue
+
+                ticker = exchange.fetch_ticker(moeda)
+                preco_atual = ticker["last"]
+
+                variacao = (preco_atual - preco_entrada) / preco_entrada
+
+                if variacao >= OBJETIVO_LUCRO:
+                    resultado = 1  # ganho
+                elif variacao <= -LIMITE_PERDA:
+                    resultado = 0  # perda
+                else:
+                    continue  # ainda pendente
+
+                ref.set({"resultado": resultado}, merge=True)
+                print(f"✅ {moeda}: resultado atualizado para {resultado}")
+                atualizados += 1
+
+            except Exception as e:
+                print(f"⚠️ Erro ao processar {data.get('Moeda')}: {e}")
+
+        print(f"\n📊 {atualizados}/{total} previsões pendentes atualizadas.")
+
+    except Exception as e:
+        print(f"❌ Erro ao avaliar previsões: {e}")
+
 
 
 def acompanhar_posicoes(exchange, posicoes):
@@ -243,8 +349,10 @@ def thread_bot():
         moedas = [s for s in exchange.symbols if s.endswith("/USDT")]
 
         while True:
+            atualizar_precos_de_entrada(exchange)
             atualizar_documentos_firestore()
             analisar_oportunidades(exchange, moedas)
+            avaliar_resultados(exchange)
             acompanhar_posicoes(exchange, carregar_posicoes())
             time.sleep(3600)
 
