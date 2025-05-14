@@ -8,7 +8,7 @@
 import os
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import ccxt
 import pandas as pd
@@ -33,6 +33,8 @@ MAX_ALERTAS_POR_CICLO = 5
 ULTIMO_RESUMO = datetime.now() - pd.to_timedelta(INTERVALO_RESUMO_HORAS, unit="h")
 OBJETIVO_LUCRO = 0.02       # 2%
 LIMITE_PERDA = 0.02         # 2%
+ULTIMO_TREINO = datetime.now() - timedelta(days=2)  # simula treino feito há 2 dias
+INTERVALO_TREINO_DIAS = 1  # treina a cada 1 dia
 
 
 # --------------------------------------------------
@@ -349,6 +351,16 @@ def thread_bot():
         moedas = [s for s in exchange.symbols if s.endswith("/USDT")]
 
         while True:
+            # Verificar se está na hora de treinar novamente
+            global ULTIMO_TREINO
+            agora = datetime.now()
+            if (agora - ULTIMO_TREINO).days >= INTERVALO_TREINO_DIAS:
+                try:
+                    from treino_modelo_firebase import treinar_modelo_automaticamente
+                    treinar_modelo_automaticamente()
+                    ULTIMO_TREINO = agora
+                except Exception as e:
+                    print(f"⚠️ Erro ao treinar automaticamente: {e}")
             atualizar_precos_de_entrada(exchange)
             atualizar_documentos_firestore()
             analisar_oportunidades(exchange, moedas)

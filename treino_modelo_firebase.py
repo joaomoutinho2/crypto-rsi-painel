@@ -3,8 +3,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 import joblib
-from datetime import datetime
 from firebase_config import iniciar_firebase
+from datetime import datetime, timedelta
 
 # 🔥 Inicializar Firestore
 try:
@@ -144,3 +144,11 @@ try:
     print("📤 Resultados do modelo guardados em Firestore (coleção modelos_treinados).")
 except Exception as e:
     print(f"❌ Erro ao guardar resultado no Firestore: {e}")
+
+def treinar_modelo_automaticamente():
+    from treino_modelo_firebase import main
+    try:
+        print("🧠 A treinar modelo automaticamente...")
+        main()
+    except Exception as e:
+        print(f"❌ Erro no treino automático: {e}")
