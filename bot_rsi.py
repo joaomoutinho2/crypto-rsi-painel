@@ -39,9 +39,13 @@ def enviar_telegram(mensagem):
     try:
         import requests
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": mensagem})
+        data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
+        response = requests.post(url, data=data)
+        print(f"📤 Enviando para Telegram: {mensagem}")
+        print(f"📨 Status: {response.status_code} / Resposta: {response.text}")
     except Exception as e:
         print(f"❌ Telegram: {e}")
+
 
 # 🔁 Helpers Firestore
 def guardar_previsao_firestore(reg):
