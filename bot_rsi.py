@@ -1,9 +1,9 @@
-# bot/bot.py – versão para Render (Web Service)
-# --------------------------------------------------------------
-# ✔ Mantém toda a lógica original do teu bot
-# ✔ Flask sobe imediatamente (health-check passa)
-# ✔ Firebase + modelo carregados em thread de fundo
-# --------------------------------------------------------------
+# bot_rsi.py — versão compatível com Render
+# --------------------------------------------------
+# ✔ Imports sensíveis movidos para dentro da thread
+# ✔ app.run() corre no processo principal
+# ✔ Firebase e modelo carregam só após o Flask subir
+# --------------------------------------------------
 
 import os
 import time
@@ -19,16 +19,11 @@ from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
 
-from config import TIMEFRAME, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-from firebase_config import iniciar_firebase
-from treino_modelo_firebase import modelo as modelo_inicial
-
-# 🔹 Variáveis globais preenchidas na thread do bot
+# 🔹 Constantes simples e globais
 db = None
 modelo = None
 MODELO_PATH = "modelo_treinado.pkl"
 
-# Constantes originais
 QUEDA_LIMITE = 0.95
 OBJETIVO_PADRAO = 10
 INTERVALO_RESUMO_HORAS = 2
@@ -36,8 +31,9 @@ MAX_ALERTAS_POR_CICLO = 5
 ULTIMO_RESUMO = datetime.now() - pd.to_timedelta(INTERVALO_RESUMO_HORAS, unit="h")
 
 # --------------------------------------------------
-# Servidor Flask (levanta-se primeiro)
+# Flask App
 # --------------------------------------------------
+
 app = Flask(__name__)
 
 @app.route("/")
@@ -56,18 +52,21 @@ def treinar_modelo():
         return f"❌ Erro ao treinar modelo: {e}"
 
 # --------------------------------------------------
-# Utilitário Telegram
+# Telegram
 # --------------------------------------------------
 
-def enviar_telegram(mensagem: str):
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+def enviar_telegram(mensagem):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         print("⚠️  Telegram não configurado –", mensagem)
         return
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": mensagem})
-    except Exception as exc:
-        print(f"❌ Telegram: {exc}")
+    except Exception as e:
+        print(f"❌ Telegram: {e}")
 
 # --------------------------------------------------
 # Firestore helpers
@@ -80,6 +79,7 @@ def guardar_previsao_firestore(reg):
         db.collection("historico_previsoes").add(reg)
     except Exception as exc:
         print(f"❌ Firestore previsões: {exc}")
+
 
 def guardar_estrategia_firestore(moeda, direcao, preco, sinais, rsi, variacao):
     if db is None:
@@ -97,6 +97,7 @@ def guardar_estrategia_firestore(moeda, direcao, preco, sinais, rsi, variacao):
     except Exception as exc:
         print(f"❌ Firestore estratégias: {exc}")
 
+
 def carregar_posicoes():
     if db is None:
         return []
@@ -107,7 +108,7 @@ def carregar_posicoes():
         return []
 
 # --------------------------------------------------
-# Core do bot
+# Bot logic
 # --------------------------------------------------
 
 def analisar_oportunidades(exchange, moedas):
@@ -172,6 +173,7 @@ def analisar_oportunidades(exchange, moedas):
     for _, msg in oportunidades[:MAX_ALERTAS_POR_CICLO]:
         enviar_telegram(msg)
 
+
 def acompanhar_posicoes(exchange, posicoes):
     global ULTIMO_RESUMO
     agora = datetime.now()
@@ -191,6 +193,7 @@ def acompanhar_posicoes(exchange, posicoes):
             enviar_telegram("\n".join(linhas))
         ULTIMO_RESUMO = agora
 
+
 def atualizar_documentos_firestore():
     if db is None:
         return
@@ -202,45 +205,41 @@ def atualizar_documentos_firestore():
         print(f"❌ Atualizar docs: {exc}")
 
 # --------------------------------------------------
-# Thread do bot (Firebase + modelo)
+# Thread principal do bot
 # --------------------------------------------------
 
 def thread_bot():
     global db, modelo
-
     try:
+        from firebase_config import iniciar_firebase
+        from treino_modelo_firebase import modelo as modelo_inicial
+        from config import TIMEFRAME
+
         db = iniciar_firebase()
         print("✅ Firebase inicializado")
-    except Exception as exc:
-        print(f"⚠️ Firebase: {exc}")
-        db = None
 
-    try:
         modelo = modelo_inicial if modelo_inicial is not None else joblib.load(MODELO_PATH)
         print("✅ Modelo carregado")
+
+        exchange = ccxt.kucoin()
+        exchange.load_markets()
+        moedas = [s for s in exchange.symbols if s.endswith("/USDT")]
+
+        while True:
+            atualizar_documentos_firestore()
+            analisar_oportunidades(exchange, moedas)
+            acompanhar_posicoes(exchange, carregar_posicoes())
+            time.sleep(3600)
+
     except Exception as exc:
-        print(f"⚠️ Modelo: {exc}")
-        modelo = None
-
-    exchange = ccxt.kucoin()
-    exchange.load_markets()
-    moedas = [s for s in exchange.symbols if s.endswith("/USDT")]
-
-    while True:
-        atualizar_documentos_firestore()
-        analisar_oportunidades(exchange, moedas)
-        acompanhar_posicoes(exchange, carregar_posicoes())
-        time.sleep(3600)
+        print(f"❌ Erro na thread do bot: {exc}")
 
 # --------------------------------------------------
-# Arranque principal (Render exige app.run)
+# Arranque principal — obrigatoriamente com app.run
 # --------------------------------------------------
 
 if __name__ == "__main__":
-    # 1️⃣ Arranca o bot em segundo plano
     threading.Thread(target=thread_bot, daemon=True).start()
-
-    # 2️⃣ Arranca o Flask no processo principal (obrigatório para Render)
     port = int(os.environ.get("PORT", 8080))
     print(f"🌐 A ouvir em 0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
