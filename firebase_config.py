@@ -8,12 +8,11 @@ print("🧪 [firebase_config] Ficheiro importado.")
 def iniciar_firebase(usando_secrets=False, secrets=None):
     print("🧪 [firebase_config] iniciar_firebase() chamado.")
 
-    if not firebase_admin._apps:  # Verifica se o Firebase já foi inicializado
+    if not firebase_admin._apps:
         try:
             if usando_secrets and secrets:
                 print("🔐 A usar secrets.toml")
                 firebase_dict = dict(secrets["firebase"])
-                # Substituir "\\n" por "\n" na chave privada
                 if "\\n" in firebase_dict["private_key"]:
                     firebase_dict["private_key"] = firebase_dict["private_key"].replace("\\n", "\n")
                 cred = credentials.Certificate(firebase_dict)
@@ -26,16 +25,14 @@ def iniciar_firebase(usando_secrets=False, secrets=None):
                 print("🧪 JSON bruto obtido do ambiente.")
                 firebase_dict = json.loads(firebase_json)
 
-                # Substituir "\\n" por "\n" na chave privada
                 if "\\n" in firebase_dict["private_key"]:
                     firebase_dict["private_key"] = firebase_dict["private_key"].replace("\\n", "\n")
 
                 print("🧪 JSON carregado com sucesso.")
                 cred = credentials.Certificate(firebase_dict)
 
-            # Inicializar o Firebase
             firebase_admin.initialize_app(cred)
-            print("✅ Firebase inicializado com sucesso.")
+            print("✅ Firebase inicializado.")
 
         except Exception as e:
             print(f"❌ Erro ao inicializar o Firebase: {e}")
