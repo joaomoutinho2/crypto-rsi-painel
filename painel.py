@@ -93,8 +93,8 @@ secao = st.sidebar.radio("📂 Secções", [
     "💼 Minhas Posições",
     "📈 Estratégias",
     "📜 Histórico de Vendas",
-    "📊 Último Modelo Treinado"~
-    "📊 Desempenho do Bot"
+    "📊 Último Modelo Treinado",
+    "📊 Desempenho do Bot",
 ])
 
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
