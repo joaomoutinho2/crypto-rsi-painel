@@ -1,27 +1,19 @@
-# bot_rsi.py — versão compatível com Render
-# --------------------------------------------------
-# ✔ Imports sensíveis movidos para dentro da thread
-# ✔ app.run() corre no processo principal
-# ✔ Firebase e modelo carregam só após o Flask subir
+# bot_rsi.py — Versão Background Worker para Render
 # --------------------------------------------------
 
 import os
 import time
-import threading
-from datetime import datetime, timedelta
-
+import joblib
 import ccxt
 import pandas as pd
-import joblib
-import requests
-from flask import Flask
+import traceback
+from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
 from config import TIMEFRAME
 
-
-# 🔹 Constantes simples e globais
+# 🔹 Constantes globais
 db = None
 modelo = None
 MODELO_PATH = "modelo_treinado.pkl"
@@ -31,63 +23,72 @@ OBJETIVO_PADRAO = 10
 INTERVALO_RESUMO_HORAS = 2
 MAX_ALERTAS_POR_CICLO = 5
 ULTIMO_RESUMO = datetime.now() - pd.to_timedelta(INTERVALO_RESUMO_HORAS, unit="h")
-OBJETIVO_LUCRO = 0.02       # 2%
-LIMITE_PERDA = 0.02         # 2%
-ULTIMO_TREINO = datetime.now() - timedelta(days=2)  # simula treino feito há 2 dias
-INTERVALO_TREINO_DIAS = 1  # treina a cada 1 dia
+OBJETIVO_LUCRO = 0.02
+LIMITE_PERDA = 0.02
+ULTIMO_TREINO = datetime.now() - timedelta(days=2)
+INTERVALO_TREINO_DIAS = 1
 
-
-# --------------------------------------------------
-# Flask App
-# --------------------------------------------------
-
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "✅ Bot RSI ativo."
-
-@app.route("/treinar_modelo")
-def treinar_modelo():
-    global modelo
-    try:
-        from treino_modelo_firebase import atualizar_resultados_firestore, modelo as novo
-        atualizar_resultados_firestore()
-        modelo = novo
-        return "✅ Modelo treinado com sucesso!"
-    except Exception as e:
-        return f"❌ Erro ao treinar modelo: {e}"
-
-# --------------------------------------------------
-# Telegram
-# --------------------------------------------------
-
+# 🔔 Telegram
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 def enviar_telegram(mensagem):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("⚠️  Telegram não configurado –", mensagem)
+        print("⚠️ Telegram não configurado –", mensagem)
         return
     try:
+        import requests
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": mensagem})
     except Exception as e:
         print(f"❌ Telegram: {e}")
 
-# --------------------------------------------------
-# Firestore helpers
-# --------------------------------------------------
+# 🔁 Helpers Firestore
+def guardar_previsao_firestore(reg):
+    if db is None:
+        return
+    try:
+        db.collection("historico_previsoes").add(reg)
+    except Exception as exc:
+        print(f"❌ Firestore previsões: {exc}")
 
-from datetime import datetime, timedelta
-import time
+def guardar_estrategia_firestore(moeda, direcao, preco, sinais, rsi, variacao):
+    if db is None:
+        return
+    try:
+        db.collection("estrategias").add({
+            "Moeda": moeda,
+            "Direcao": direcao,
+            "Preço": preco,
+            "Sinais": sinais,
+            "RSI": rsi,
+            "Variação (%)": variacao,
+            "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+    except Exception as exc:
+        print(f"❌ Firestore estratégias: {exc}")
+
+def carregar_posicoes():
+    if db is None:
+        return []
+    try:
+        return [doc.to_dict() for doc in db.collection("posicoes").stream()]
+    except Exception as e:
+        print(f"❌ Erro carregar posições: {e}")
+        return []
+
+def atualizar_documentos_firestore():
+    if db is None:
+        return
+    try:
+        for doc in db.collection("historico_previsoes").stream():
+            if "resultado" not in doc.to_dict():
+                db.collection("historico_previsoes").document(doc.id).set({"resultado": None}, merge=True)
+    except Exception as exc:
+        print(f"❌ Atualizar docs: {exc}")
 
 def atualizar_precos_de_entrada(exchange, timeframe="1h"):
-    """
-    Atualiza todos os documentos sem 'preco_entrada' com base no candle mais próximo da data da previsão.
-    """
     print("🛠️ Atualizando documentos antigos com campo 'preco_entrada'...")
-
     try:
         docs = db.collection("historico_previsoes").stream()
         atualizados = 0
@@ -109,73 +110,29 @@ def atualizar_precos_de_entrada(exchange, timeframe="1h"):
                     continue
 
                 dt = datetime.strptime(data_str, "%Y-%m-%d %H:%M:%S")
-                timestamp = int(time.mktime((dt - timedelta(minutes=5)).timetuple())) * 1000  # começa 5min antes
-
+                timestamp = int(time.mktime((dt - timedelta(minutes=5)).timetuple())) * 1000
                 candles = exchange.fetch_ohlcv(moeda, timeframe=timeframe, since=timestamp, limit=5)
                 if not candles:
-                    print(f"⚠️ Sem candles para {moeda} em {data_str}")
                     continue
 
-                # Encontrar o candle mais próximo
                 candle_proximo = min(candles, key=lambda x: abs(x[0] - int(dt.timestamp() * 1000)))
                 preco_close = candle_proximo[4]
-
                 ref.set({"preco_entrada": preco_close}, merge=True)
-                print(f"✅ {moeda} @ {data_str} → {preco_close:.4f}")
                 atualizados += 1
 
             except Exception as e:
                 print(f"⚠️ Erro em {moeda} @ {data_str}: {e}")
 
-        print(f"\n📊 {atualizados}/{total} documentos atualizados com 'preco_entrada'.")
+        print(f"📊 {atualizados}/{total} documentos atualizados com 'preco_entrada'.")
 
     except Exception as e:
         print(f"❌ Erro ao atualizar preços de entrada: {e}")
-
-def guardar_previsao_firestore(reg):
-    if db is None:
-        return
-    try:
-        db.collection("historico_previsoes").add(reg)
-    except Exception as exc:
-        print(f"❌ Firestore previsões: {exc}")
-
-
-def guardar_estrategia_firestore(moeda, direcao, preco, sinais, rsi, variacao):
-    if db is None:
-        return
-    try:
-        db.collection("estrategias").add({
-            "Moeda": moeda,
-            "Direcao": direcao,
-            "Preço": preco,
-            "Sinais": sinais,
-            "RSI": rsi,
-            "Variação (%)": variacao,
-            "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        })
-    except Exception as exc:
-        print(f"❌ Firestore estratégias: {exc}")
-
-
-def carregar_posicoes():
-    if db is None:
-        return []
-    try:
-        return [doc.to_dict() for doc in db.collection("posicoes").stream()]
-    except Exception as e:
-        print(f"❌ Erro carregar posições: {e}")
-        return []
-
-# --------------------------------------------------
-# Bot logic
-# --------------------------------------------------
 
 def analisar_oportunidades(exchange, moedas):
     print("🧪 [DEBUG] analisar_oportunidades começou...")
     oportunidades = []
 
-    for moeda in moedas[:3]:  # testamos só 3 para ser mais rápido
+    for moeda in moedas[:3]:
         print(f"🧪 [DEBUG] Analisando {moeda}")
         try:
             candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
@@ -209,12 +166,12 @@ def analisar_oportunidades(exchange, moedas):
             }])
             prev_array = modelo.predict(entrada) if modelo else [0]
             try:
-                prev = int(prev_array[0])  # converte para int simples
+                prev = int(prev_array[0])
             except (ValueError, TypeError):
                 print(f"⚠️ Valor inesperado em previsão: {prev_array[0]}")
-                prev = 0  # fallback seguro
+                prev = 0
 
-            print(f"🧪 [DEBUG] Prev: {prev}")  # 👈 debug útil aqui
+            print(f"🧪 [DEBUG] Prev: {prev}")
 
             reg = {
                 "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -225,8 +182,6 @@ def analisar_oportunidades(exchange, moedas):
                 "resultado": None,
             }
             guardar_previsao_firestore(reg)
-
-            # FORÇA ALERTA DE TESTE
             enviar_telegram(f"🔔 Alerta forçado para {moeda} com prev={prev}")
 
             if prev:
@@ -247,14 +202,8 @@ def analisar_oportunidades(exchange, moedas):
     for _, msg in oportunidades[:MAX_ALERTAS_POR_CICLO]:
         enviar_telegram(msg)
 
-
 def avaliar_resultados(exchange):
-    """
-    Atualiza documentos com resultado 'pendente' ou None para 0 (perda) ou 1 (ganho)
-    com base no preço atual da moeda.
-    """
     print("📈 A avaliar previsões pendentes...")
-
     try:
         docs = db.collection("historico_previsoes").where("resultado", "in", ["pendente", None]).stream()
         atualizados = 0
@@ -324,117 +273,6 @@ def acompanhar_posicoes(exchange, posicoes):
             enviar_telegram(mensagem)
         ULTIMO_RESUMO = agora
 
-
-
-def atualizar_documentos_firestore():
-    if db is None:
-        return
-    try:
-        for doc in db.collection("historico_previsoes").stream():
-            if "resultado" not in doc.to_dict():
-                db.collection("historico_previsoes").document(doc.id).set({"resultado": None}, merge=True)
-    except Exception as exc:
-        print(f"❌ Atualizar docs: {exc}")
-
-# --------------------------------------------------
-# Thread principal do bot
-# --------------------------------------------------
-
-import traceback  # <- importa no topo do ficheiro, se ainda não estiver
-
-def thread_bot():
-    import traceback
-    global db, modelo
-
-    try:
-        print("🚀 A iniciar thread do bot...")
-
-        # 🔹 Importar e iniciar Firebase
-        print("🔍 [1] A importar firebase_config...")
-        try:
-            from firebase_config import iniciar_firebase
-            print("✅ firebase_config importado.")
-        except Exception as e:
-            print(f"❌ Erro ao importar firebase_config: {e}")
-            traceback.print_exc()
-            return
-
-        print("🔌 A ligar ao Firebase...")
-        try:
-            db = iniciar_firebase()
-            print("✅ Firebase inicializado.")
-        except Exception as e:
-            print(f"❌ Erro ao iniciar Firebase: {e}")
-            traceback.print_exc()
-            return
-
-        # 🔹 Importar modelo treinado
-        print("🔍 [2] A importar modelo_inicial...")
-        try:
-            from treino_modelo_firebase import modelo as modelo_inicial
-            print("✅ modelo_inicial importado.")
-        except Exception as e:
-            print(f"❌ Erro ao importar modelo_inicial: {e}")
-            traceback.print_exc()
-            modelo_inicial = None
-
-        print("📦 A carregar modelo...")
-        modelo = modelo_inicial if modelo_inicial is not None else joblib.load(MODELO_PATH)
-        print("✅ Modelo carregado")
-
-        # 🔔 Mensagem de teste
-        print("📨 Enviando teste para Telegram...")
-        enviar_telegram("🔔 Teste manual logo após iniciar bot.")
-
-        # 🔹 Exchange
-        exchange = ccxt.kucoin({
-            "enableRateLimit": True,
-            "options": {"adjustForTimeDifference": True},
-        })
-        exchange.load_markets()
-        moedas = [s for s in exchange.symbols if s.endswith("/USDT")]
-        print(f"🔁 {len(moedas)} moedas carregadas.")
-        if not moedas:
-            enviar_telegram("⚠️ Nenhuma moeda USDT encontrada na exchange.")
-
-        # 🔁 Loop principal
-        while True:
-            global ULTIMO_TREINO
-            agora = datetime.now()
-
-            if (agora - ULTIMO_TREINO).days >= INTERVALO_TREINO_DIAS:
-                try:
-                    from treino_modelo_firebase import treinar_modelo_automaticamente
-                    treinar_modelo_automaticamente()
-                    ULTIMO_TREINO = agora
-                except Exception as e:
-                    print(f"⚠️ Erro ao treinar automaticamente: {e}")
-
-            atualizar_precos_de_entrada(exchange)
-            atualizar_documentos_firestore()
-            analisar_oportunidades(exchange, moedas)
-            avaliar_resultados(exchange)
-            acompanhar_posicoes(exchange, carregar_posicoes())
-            time.sleep(3600)
-
-    except Exception as exc:
-        print(f"❌ Erro na thread do bot: {exc}")
-        traceback.print_exc()
-        try:
-            enviar_telegram(f"❌ Erro na thread do bot: {exc}")
-        except Exception as te:
-            print(f"⚠️ Também falhou ao enviar mensagem Telegram: {te}")
-
-# --------------------------------------------------
-# Arranque principal — obrigatoriamente com app.run
-# --------------------------------------------------
-
+# 🎯 Início real
 if __name__ == "__main__":
-    # 🧠 Inicia o bot numa thread paralela
-    print("🚀 A iniciar thread do bot...")
-    threading.Thread(target=thread_bot, daemon=True).start()
-
-    # 🌐 Inicia o servidor Flask (para manter o Render ativo)
-    port = int(os.environ.get("PORT", 10000))
-    print(f"🌐 A ouvir em 0.0.0.0:{port}")
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    thread_bot()
