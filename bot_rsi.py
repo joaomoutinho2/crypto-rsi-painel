@@ -340,6 +340,8 @@ def atualizar_documentos_firestore():
 # Thread principal do bot
 # --------------------------------------------------
 
+import traceback  # <- importa no topo do ficheiro, se ainda não estiver
+
 def thread_bot():
     global db, modelo
     try:
@@ -354,7 +356,6 @@ def thread_bot():
         modelo = modelo_inicial if modelo_inicial is not None else joblib.load(MODELO_PATH)
         print("✅ Modelo carregado")
 
-        # 🧠 Forçar alerta de teste logo ao iniciar
         enviar_telegram("🔔 Teste manual logo após iniciar bot.")
 
         exchange = ccxt.kucoin({
@@ -389,7 +390,12 @@ def thread_bot():
 
     except Exception as exc:
         print(f"❌ Erro na thread do bot: {exc}")
-        enviar_telegram(f"❌ Erro na thread do bot: {exc}")
+        traceback.print_exc()
+        try:
+            enviar_telegram(f"❌ Erro na thread do bot: {exc}")
+        except Exception as te:
+            print(f"⚠️ Também falhou ao enviar mensagem Telegram: {te}")
+
 
 
 # --------------------------------------------------
