@@ -184,7 +184,7 @@ def analisar_oportunidades(exchange, moedas):
             guardar_previsao_firestore(reg)
             enviar_telegram(f"🔔 Alerta forçado para {moeda} com prev={prev}")
 
-            if prev:
+            if true:
                 sinais = ", ".join([s for s in [
                     "RSI<30" if rsi < 30 else None,
                     "preço>EMA" if preco > ema else None,
