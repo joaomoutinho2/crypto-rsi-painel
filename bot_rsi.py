@@ -345,25 +345,39 @@ import traceback  # <- importa no topo do ficheiro, se ainda não estiver
 def thread_bot():
     global db, modelo
     try:
+        print("🚀 A iniciar thread do bot...")
+
         print("🔍 [1] A importar firebase_config...")
-        from firebase_config import iniciar_firebase
+        try:
+            from firebase_config import iniciar_firebase
+            print("✅ firebase_config importado.")
+        except Exception as e:
+            print(f"❌ Erro ao importar firebase_config: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+
+        print("🔌 A ligar ao Firebase...")
+        try:
+            db = iniciar_firebase()
+            print("✅ Firebase inicializado.")
+        except Exception as e:
+            print(f"❌ Erro ao iniciar Firebase: {e}")
+            import traceback
+            traceback.print_exc()
+            return
 
         print("🔍 [2] A importar modelo_inicial...")
         try:
             from treino_modelo_firebase import modelo as modelo_inicial
-            print("✅ modelo_inicial importado com sucesso.")
+            print("✅ modelo_inicial importado.")
         except Exception as e:
             print(f"❌ Erro ao importar modelo_inicial: {e}")
             import traceback
             traceback.print_exc()
-            modelo_inicial = None  # fallback
+            modelo_inicial = None
 
-
-        print("🧠 Thread do bot iniciada.")
-
-        db = iniciar_firebase()
-        print("✅ Firebase inicializado")
-
+        print("📦 A carregar modelo...")
         modelo = modelo_inicial if modelo_inicial is not None else joblib.load(MODELO_PATH)
         print("✅ Modelo carregado")
 
