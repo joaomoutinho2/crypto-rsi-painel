@@ -272,6 +272,57 @@ def acompanhar_posicoes(exchange, posicoes):
             mensagem = "📈 Atualização de posições:\n" + "\n".join(linhas)
             enviar_telegram(mensagem)
         ULTIMO_RESUMO = agora
+        
+def thread_bot():
+    import traceback
+    global db, modelo
+    try:
+        print("🚀 Iniciando bot como Background Worker...")
+        from firebase_config import iniciar_firebase
+        from treino_modelo_firebase import modelo as modelo_inicial
+
+        db = iniciar_firebase()
+        print("✅ Firebase inicializado.")
+
+        modelo = modelo_inicial if modelo_inicial is not None else joblib.load(MODELO_PATH)
+        print("✅ Modelo carregado")
+
+        enviar_telegram("🔔 Bot RSI iniciado no Render (Background Worker)")
+
+        exchange = ccxt.kucoin({
+            "enableRateLimit": True,
+            "options": {"adjustForTimeDifference": True},
+        })
+        exchange.load_markets()
+        moedas = [s for s in exchange.symbols if s.endswith("/USDT")]
+
+        while True:
+            global ULTIMO_TREINO
+            agora = datetime.now()
+
+            if (agora - ULTIMO_TREINO).days >= INTERVALO_TREINO_DIAS:
+                try:
+                    from treino_modelo_firebase import treinar_modelo_automaticamente
+                    treinar_modelo_automaticamente()
+                    ULTIMO_TREINO = agora
+                except Exception as e:
+                    print(f"⚠️ Erro ao treinar automaticamente: {e}")
+
+            atualizar_precos_de_entrada(exchange)
+            atualizar_documentos_firestore()
+            analisar_oportunidades(exchange, moedas)
+            avaliar_resultados(exchange)
+            acompanhar_posicoes(exchange, carregar_posicoes())
+
+            time.sleep(3600)
+
+    except Exception as exc:
+        print(f"❌ Erro fatal no bot: {exc}")
+        traceback.print_exc()
+        try:
+            enviar_telegram(f"❌ Erro no bot: {exc}")
+        except:
+            pass
 
 # 🎯 Início real
 if __name__ == "__main__":
