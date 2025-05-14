@@ -49,21 +49,22 @@ try:
         data = doc.to_dict()
 
         # Verificar se todos os campos necessários estão presentes
-        faltam = [k for k in campos_necessarios if k not in data]
-        if faltam:
-            print(f"⚠️ Documento ignorado: {doc.id} - Faltam campos: {faltam}")
+        if not all(k in data for k in campos_necessarios):
+            print(f"⚠️ Documento ignorado: {doc.id} - Faltam campos necessários")
             continue
 
         # Verificar se os valores dos campos são válidos (não None ou NaN)
-        valores = [data[k] for k in campos_necessarios]
-        if any(v is None or (isinstance(v, float) and pd.isna(v)) for v in valores):
-            print(f"⚠️ Documento ignorado: {doc.id} - Contém valores None ou NaN")
+        if any(v is None or (isinstance(v, float) and pd.isna(v)) for v in [data[k] for k in campos_necessarios]):
+            print(f"⚠️ Documento ignorado: {doc.id} - Contém valores inválidos")
             continue
 
-        # Adicionar documento válido à lista de registos
+        # Verificar se o campo resultado é 0 ou 1 (ignorar 'pendente')
+        if data["resultado"] not in [0, 1]:
+            print(f"⚠️ Documento ignorado: {doc.id} - resultado inválido: {data['resultado']}")
+            continue
+
         registos.append(data)
 
-    # Verificar se há registos válidos
     if not registos:
         print("❌ Nenhum registo válido encontrado no Firestore.")
         exit()
@@ -74,11 +75,11 @@ except Exception as e:
     print(f"❌ Erro ao carregar dados do Firestore: {e}")
     exit()
 
+# 🔢 Criar DataFrame
 df = pd.DataFrame(registos)
-
-# 🎯 Preparar dados
 features = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position"]
-if not all(feature in df.columns for feature in features):
+
+if not all(f in df.columns for f in features):
     print(f"❌ Faltam colunas obrigatórias nos dados: {features}")
     exit()
 
@@ -89,7 +90,7 @@ if len(df) < 2:
     print("❌ Ainda não há dados suficientes no Firestore para treino.")
     exit()
 
-# 🔀 Dividir os dados em treino e teste
+# 🔀 Dividir dados em treino e teste
 try:
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 except Exception as e:
@@ -104,7 +105,7 @@ except Exception as e:
     print(f"❌ Erro ao treinar o modelo: {e}")
     exit()
 
-# 📊 Avaliação do modelo
+# 📊 Avaliar o modelo
 try:
     y_pred = modelo.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
@@ -119,7 +120,7 @@ except Exception as e:
     print(f"❌ Erro ao avaliar o modelo: {e}")
     exit()
 
-# 💾 Guardar modelo localmente
+# 💾 Guardar modelo
 try:
     joblib.dump(modelo, "modelo_treinado.pkl")
     print("✅ Modelo guardado como modelo_treinado.pkl")
@@ -136,7 +137,7 @@ try:
         "acuracia": acc,
         "relatorio": relatorio,
         "matriz_confusao": matriz,
-        "resultado": "treinado"  # ✅ Campo incluído para evitar erro no painel
+        "resultado": "treinado"
     }
 
     db.collection("modelos_treinados").add(resultado_doc)
