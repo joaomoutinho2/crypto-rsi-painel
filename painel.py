@@ -23,7 +23,7 @@ from firebase_admin import firestore
 from telegram_alert import enviar_telegram
 
 # ✅ Inicializar Firestore com secrets do Streamlit
-db = iniciar_firebase(usando_secrets=True, secrets=st.secrets)
+db = iniciar_firebase(usando_secrets=False)
 
 # ============================
 # 🔁 Funções Firestore
