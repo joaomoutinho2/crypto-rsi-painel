@@ -466,28 +466,26 @@ elif secao == "📊 Desempenho do Bot":
             df["Data"] = pd.to_datetime(df["Data"])
             historico = df.groupby(df["Data"].dt.date)["acertou"].mean()
             st.line_chart(historico)
-                # ============================
-    # 💰 LUCRO ACUMULADO POR MOEDA
-    # ============================
-    st.subheader("💰 Lucro Acumulado por Moeda")
+            # ============================
+            # 💰 LUCRO ACUMULADO POR MOEDA
+            # ============================
+            st.subheader("💰 Lucro Acumulado por Moeda")
 
-    try:
-        vendas = db.collection("historico_vendas").stream()
-        vendas_dados = [doc.to_dict() for doc in vendas if "moeda" in doc.to_dict() and "lucro" in doc.to_dict()]
+            try:
+                vendas = db.collection("historico_vendas").stream()
+                vendas_dados = [doc.to_dict() for doc in vendas if "moeda" in doc.to_dict() and "lucro" in doc.to_dict()]
 
-        if vendas_dados:
-            df_vendas = pd.DataFrame(vendas_dados)
-            df_vendas["lucro"] = pd.to_numeric(df_vendas["lucro"], errors="coerce")
-            lucro_moeda = df_vendas.groupby("moeda")["lucro"].sum().sort_values(ascending=False)
+                if vendas_dados:
+                    df_vendas = pd.DataFrame(vendas_dados)
+                    df_vendas["lucro"] = pd.to_numeric(df_vendas["lucro"], errors="coerce")
+                    lucro_moeda = df_vendas.groupby("moeda")["lucro"].sum().sort_values(ascending=False)
 
-            st.bar_chart(lucro_moeda)
-            st.dataframe(lucro_moeda.rename("Lucro Total (USDT)").map(lambda x: f"{x:.2f}"), use_container_width=True)
-        else:
-            st.info("Ainda não há vendas registadas.")
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
-
-
+                    st.bar_chart(lucro_moeda)
+                    st.dataframe(lucro_moeda.rename("Lucro Total (USDT)").map(lambda x: f"{x:.2f}"), use_container_width=True)
+                else:
+                    st.info("Ainda não há vendas registadas.")
+            except Exception as e:
+                st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
         else:
             st.info("Ainda não há previsões com resultados avaliados.")
     except Exception as e:
