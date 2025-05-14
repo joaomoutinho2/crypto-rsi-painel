@@ -345,7 +345,10 @@ import traceback  # <- importa no topo do ficheiro, se ainda não estiver
 def thread_bot():
     global db, modelo
     try:
+        print("🔍 [1] A importar firebase_config...")
         from firebase_config import iniciar_firebase
+
+        print("🔍 [2] A importar modelo_inicial...")
         from treino_modelo_firebase import modelo as modelo_inicial
 
         print("🧠 Thread do bot iniciada.")
