@@ -221,7 +221,7 @@ def analisar_oportunidades(exchange, moedas):
             }
             guardar_previsao_firestore(reg)
 
-            if prev:
+            if true:
                 sinais = ", ".join([s for s in [
                     "RSI<30" if rsi < 30 else None,
                     "preço>EMA" if preco > ema else None,
@@ -237,7 +237,7 @@ def analisar_oportunidades(exchange, moedas):
 
     oportunidades.sort(reverse=True)
     for _, msg in oportunidades[:MAX_ALERTAS_POR_CICLO]:
-        enviar_telegram(msg)
+        enviar_telegram(mensagem)
 
 def avaliar_resultados(exchange):
     """
