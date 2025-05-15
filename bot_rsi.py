@@ -282,7 +282,7 @@ def thread_bot():
     try:
         print("🚀 Iniciando bot como Background Worker...")
         from firebase_config import iniciar_firebase
-        from treino_modelo_firebase import modelo as modelo_inicial
+        from treino_modelo_firebase import treinar_modelo_automaticamente
 
         db = iniciar_firebase()
         print("✅ Firebase inicializado.")
@@ -295,13 +295,14 @@ def thread_bot():
         moedas = [s for s in exchange.symbols if s.endswith("/USDT")]
         print(f"🔁 {len(moedas)} moedas carregadas.")
 
-        # ✅ Atualizar documentos e preços antes de carregar o modelo
+        # ✅ Atualizar documentos e preços antes de treinar
         atualizar_precos_de_entrada(exchange)
         atualizar_documentos_firestore()
 
-        # ✅ Carregar modelo agora com dados atualizados
-        modelo = modelo_inicial if modelo_inicial is not None else joblib.load(MODELO_PATH)
-        print("✅ Modelo carregado")
+        # ✅ Treinar modelo com dados atualizados
+        print("🧠 A treinar modelo antes de iniciar...")
+        modelo = treinar_modelo_automaticamente()
+        print("✅ Modelo treinado e carregado.")
 
         enviar_telegram("🔔 Bot RSI iniciado no Render (Background Worker)")
 
@@ -311,12 +312,14 @@ def thread_bot():
 
             if (agora - ULTIMO_TREINO).days >= INTERVALO_TREINO_DIAS:
                 try:
-                    from treino_modelo_firebase import treinar_modelo_automaticamente
-                    treinar_modelo_automaticamente()
+                    modelo = treinar_modelo_automaticamente()
                     ULTIMO_TREINO = agora
+                    print("✅ Modelo re-treinado automaticamente.")
                 except Exception as e:
                     print(f"⚠️ Erro ao treinar automaticamente: {e}")
 
+            atualizar_precos_de_entrada(exchange)
+            atualizar_documentos_firestore()
             analisar_oportunidades(exchange, moedas)
             avaliar_resultados(exchange)
             acompanhar_posicoes(exchange, carregar_posicoes())
