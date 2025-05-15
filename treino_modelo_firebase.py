@@ -35,11 +35,13 @@ def carregar_dados_treino():
             if any(v is None or (isinstance(v, float) and pd.isna(v)) for v in [data[k] for k in campos_necessarios]):
                 ignorados += 1
                 continue
-            if data["resultado"] not in [0, 1]:
+            try:
+                valor_resultado = float(data["resultado"])
+                data["target"] = 1 if valor_resultado > 0 else 0
+                registos.append(data)
+            except Exception:
                 ignorados += 1
                 continue
-
-            registos.append(data)
 
         if not registos:
             print("❌ Nenhum registo válido encontrado para treino.")
@@ -63,7 +65,7 @@ def treinar_modelo_e_guardar():
 
     features = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position"]
     X = df[features]
-    y = df["resultado"]
+    y = df["target"]
 
     try:
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
@@ -95,7 +97,8 @@ def treinar_modelo_e_guardar():
         }
         db.collection("modelos_treinados").add(resultado_doc)
         print("📤 Resultados do modelo guardados em Firestore com modelo serializado.")
-
+        return modelo
+        
     except Exception as e:
         print(f"❌ Erro ao treinar ou guardar modelo: {e}")
 

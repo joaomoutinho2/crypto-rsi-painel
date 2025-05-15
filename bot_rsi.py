@@ -1,4 +1,4 @@
-# bot_rsi.py — Versão Background Worker para Render
+# bot_rsi.py — Versão Corrigida e Otimizada para Background Worker no Render
 # --------------------------------------------------
 
 import os
@@ -23,10 +23,10 @@ OBJETIVO_PADRAO = 10
 INTERVALO_RESUMO_HORAS = 2
 MAX_ALERTAS_POR_CICLO = 5
 ULTIMO_RESUMO = datetime.now() - pd.to_timedelta(INTERVALO_RESUMO_HORAS, unit="h")
-OBJETIVO_LUCRO = 0.02
-LIMITE_PERDA = 0.02
 ULTIMO_TREINO = datetime.now() - timedelta(days=2)
 INTERVALO_TREINO_DIAS = 1
+ULTIMA_AVALIACAO_RESULTADO = datetime.now() - timedelta(hours=3)
+INTERVALO_AVALIACAO_HORAS = 2
 
 # 🔔 Telegram
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
@@ -133,14 +133,19 @@ def atualizar_precos_de_entrada(exchange, timeframe="1h"):
         print(f"❌ Erro ao atualizar preços de entrada: {e}")
 
 def analisar_oportunidades(exchange, moedas):
+    from ta.momentum import RSIIndicator
+    from ta.trend import EMAIndicator, MACD
+    from ta.volatility import BollingerBands
+
     print("🧪 [DEBUG] analisar_oportunidades começou...")
     oportunidades = []
 
-    for moeda in moedas[:3]:
+    for moeda in moedas:
         print(f"🧪 [DEBUG] Analisando {moeda}")
         try:
             candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
             df = pd.DataFrame(candles, columns=["t", "open", "high", "low", "close", "volume"])
+
             df["RSI"] = RSIIndicator(close=df["close"]).rsi()
             df["EMA"] = EMAIndicator(close=df["close"]).ema_indicator()
             macd_obj = MACD(close=df["close"])
@@ -151,6 +156,7 @@ def analisar_oportunidades(exchange, moedas):
             df["BB_inf"] = bb.bollinger_lband()
             df["BB_sup"] = bb.bollinger_hband()
 
+            # Extrair os últimos valores
             rsi = df["RSI"].iat[-1]
             preco = df["close"].iat[-1]
             ema = df["EMA"].iat[-1]
@@ -161,92 +167,102 @@ def analisar_oportunidades(exchange, moedas):
             bb_inf = df["BB_inf"].iat[-1]
             bb_sup = df["BB_sup"].iat[-1]
 
-            entrada = pd.DataFrame([{ 
+            # Calcular variáveis de entrada
+            entrada = pd.DataFrame([{
                 "RSI": rsi,
-                "EMA_diff": (preco - ema) / ema,
+                "EMA_diff": (preco - ema) / ema if ema != 0 else 0,
                 "MACD_diff": macd - macd_sig,
                 "Volume_relativo": vol / vol_med,
                 "BB_position": (preco - bb_inf) / (bb_sup - bb_inf) if bb_sup > bb_inf else 0.5,
             }])
+
+            # Previsão
             prev_array = modelo.predict(entrada) if modelo else [0]
-            try:
-                prev = int(prev_array[0])
-            except (ValueError, TypeError):
-                print(f"⚠️ Valor inesperado em previsão: {prev_array[0]}")
-                prev = 0
+            prev = int(prev_array[0]) if prev_array[0] in [0, 1] else 0
+            print(f"🧪 [DEBUG] Previsão: {prev}")
 
-            print(f"🧪 [DEBUG] Prev: {prev}")
-
-            reg = {
+            # Guardar no Firestore
+            registo = {
                 "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Moeda": moeda,
                 "preco_entrada": preco,
                 **entrada.iloc[0].to_dict(),
                 "Previsao": prev,
-                "resultado": None,
+                "resultado": None  # Será calculado quando a posição for fechada
             }
-            guardar_previsao_firestore(reg)
-            enviar_telegram(f"🔔 Alerta forçado para {moeda} com prev={prev}")
+            guardar_previsao_firestore(registo)
 
-            if Prev:
-                sinais = ", ".join([s for s in [
+            # Só alerta se previsão for positiva
+            if prev == 1:
+                sinais = ", ".join(filter(None, [
                     "RSI<30" if rsi < 30 else None,
                     "preço>EMA" if preco > ema else None,
                     "MACD>sinal" if macd > macd_sig else None,
-                    "vol alto" if vol > vol_med else None,
-                    "BB inf" if preco < bb_inf else None,
-                ] if s])
+                    "volume↑" if vol > vol_med else None,
+                    "abaixo BB" if preco < bb_inf else None
+                ]))
+
+                oportunidades.append((
+                    abs(entrada["MACD_diff"].iloc[0]),
+                    f"🚨 {moeda}: RSI={rsi:.2f} MACD={macd:.2f}/{macd_sig:.2f} | {sinais}"
+                ))
+
                 guardar_estrategia_firestore(moeda, "ENTRADA", preco, sinais, rsi, (preco - ema) / ema * 100)
-                oportunidades.append((abs(reg["MACD_diff"]), f"🚨 {moeda}: RSI={rsi:.2f} MACD={macd:.2f}/{macd_sig:.2f}"))
 
         except Exception as exc:
             print(f"⚠️ Erro ao analisar {moeda}: {exc}")
 
+    # Enviar apenas top N oportunidades ordenadas por força do MACD
     oportunidades.sort(reverse=True)
-    for _, msg in oportunidades[:MAX_ALERTAS_POR_CICLO]:
-        enviar_telegram(msg)
+    for _, mensagem in oportunidades[:MAX_ALERTAS_POR_CICLO]:
+        enviar_telegram(mensagem)
 
-def avaliar_resultados(exchange):
+def avaliar_resultados():
     print("📈 A avaliar previsões pendentes...")
+
     try:
-        docs = db.collection("historico_previsoes").where("resultado", "in", ["pendente", None]).stream()
+        docs = db.collection("historico_previsoes").stream()
         atualizados = 0
-        ignorados = 0
-        total = 0
 
         for doc in docs:
-            total += 1
             data = doc.to_dict()
-            ref = doc.reference
+            doc_id = doc.id
+
+            # Verificar se resultado precisa de ser atualizado
+            if data.get("resultado") not in [None, "pendente", "null", ""]:
+                continue  # já foi avaliado
+
+            moeda = data.get("Moeda")
+            preco_entrada = data.get("preco_entrada")
+
+            if not moeda or preco_entrada is None:
+                print(f"⚠️ Ignorado doc {doc_id} sem moeda ou preco_entrada.")
+                continue
 
             try:
-                moeda = data["Moeda"]
-                preco_entrada = float(data.get("preco_entrada") or 0)
-                if preco_entrada == 0:
-                    ignorados += 1
-                    continue
-
                 ticker = exchange.fetch_ticker(moeda)
                 preco_atual = ticker["last"]
-                variacao = (preco_atual - preco_entrada) / preco_entrada
 
-                if variacao >= OBJETIVO_LUCRO:
-                    resultado = 1
-                elif variacao <= -LIMITE_PERDA:
-                    resultado = 0
-                else:
-                    continue
+                resultado_pct = round((preco_atual - preco_entrada) / preco_entrada * 100, 2)
 
-                ref.set({"resultado": resultado}, merge=True)
+                db.collection("historico_previsoes").document(doc_id).update({
+                    "resultado": resultado_pct
+                })
+
+                print(f"✅ Atualizado doc {doc_id} | {moeda}: {resultado_pct:.2f}%")
                 atualizados += 1
 
             except Exception as e:
-                print(f"⚠️ Erro ao processar {data.get('Moeda')}: {e}")
+                print(f"⚠️ Erro ao obter preço de {moeda} para doc {doc_id}: {e}")
 
-        print(f"📊 Previsões avaliadas: {total}, atualizadas: {atualizados}, ignoradas: {ignorados}")
+        if atualizados == 0:
+            print("ℹ️ Nenhum documento precisou de atualização.")
+        else:
+            print(f"✅ {atualizados} documentos atualizados com resultado (%)")
 
-    except Exception as e:
-        print(f"❌ Erro ao avaliar previsões: {e}")
+    except Exception as exc:
+        print(f"❌ Erro ao avaliar previsões: {exc}")
+
 
 def acompanhar_posicoes(exchange, posicoes):
     global ULTIMO_RESUMO
@@ -276,9 +292,50 @@ def acompanhar_posicoes(exchange, posicoes):
             mensagem = "📈 Atualização de posições:\n" + "\n".join(linhas)
             enviar_telegram(mensagem)
         ULTIMO_RESUMO = agora
+
+def avaliar_previsoes_pendentes():
+    print("📈 A avaliar previsões pendentes...")
+    try:
+        docs = db.collection("historico_previsoes").where("resultado", "==", None).stream()
+        documentos = [doc for doc in docs]
+
+        if not documentos:
+            print("✅ Nenhum documento pendente.")
+            return
+
+        exchange = ccxt.kucoin()
+        exchange.load_markets()
+        atualizados = 0
+
+        for doc in documentos:
+            dados = doc.to_dict()
+            doc_ref = doc.reference
+
+            moeda = dados.get("Moeda")
+            preco_entrada = dados.get("preco_entrada")
+
+            if not moeda or preco_entrada is None:
+                continue
+
+            try:
+                ticker = exchange.fetch_ticker(moeda)
+                preco_atual = ticker["last"]
+                variacao = ((preco_atual - preco_entrada) / preco_entrada) * 100
+
+                doc_ref.update({"resultado": variacao})
+                atualizados += 1
+                print(f"✅ Atualizado {moeda} com variação {variacao:.2f}%")
+
+            except Exception as e:
+                print(f"⚠️ Erro ao obter preço para {moeda}: {e}")
+
+        print(f"📊 {atualizados} documentos atualizados com o campo 'resultado'.")
+
+    except Exception as e:
+        print(f"❌ Erro ao avaliar previsões: {e}")
         
 def thread_bot():
-    global db, modelo
+    global db, modelo, ULTIMO_TREINO, ULTIMA_AVALIACAO_RESULTADO
     try:
         print("🚀 Iniciando bot como Background Worker...")
         from firebase_config import iniciar_firebase
@@ -295,11 +352,9 @@ def thread_bot():
         moedas = [s for s in exchange.symbols if s.endswith("/USDT")]
         print(f"🔁 {len(moedas)} moedas carregadas.")
 
-        # ✅ Atualizar documentos e preços antes de treinar
         atualizar_precos_de_entrada(exchange)
         atualizar_documentos_firestore()
 
-        # ✅ Treinar modelo com dados atualizados
         print("🧠 A treinar modelo antes de iniciar...")
         modelo = treinar_modelo_automaticamente()
         print("✅ Modelo treinado e carregado.")
@@ -307,7 +362,6 @@ def thread_bot():
         enviar_telegram("🔔 Bot RSI iniciado no Render (Background Worker)")
 
         while True:
-            global ULTIMO_TREINO
             agora = datetime.now()
 
             if (agora - ULTIMO_TREINO).days >= INTERVALO_TREINO_DIAS:
@@ -318,10 +372,16 @@ def thread_bot():
                 except Exception as e:
                     print(f"⚠️ Erro ao treinar automaticamente: {e}")
 
+            if (agora - ULTIMA_AVALIACAO_RESULTADO).total_seconds() > INTERVALO_AVALIACAO_HORAS * 3600:
+                try:
+                    avaliar_resultados()
+                    ULTIMA_AVALIACAO_RESULTADO = agora
+                except Exception as e:
+                    print(f"⚠️ Erro ao avaliar previsões: {e}")
+
             atualizar_precos_de_entrada(exchange)
             atualizar_documentos_firestore()
             analisar_oportunidades(exchange, moedas)
-            avaliar_resultados(exchange)
             acompanhar_posicoes(exchange, carregar_posicoes())
 
             time.sleep(3600)
@@ -334,6 +394,5 @@ def thread_bot():
         except:
             pass
 
-# 🎯 Início real
 if __name__ == "__main__":
     thread_bot()
