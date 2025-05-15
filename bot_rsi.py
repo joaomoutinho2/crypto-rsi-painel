@@ -278,7 +278,6 @@ def acompanhar_posicoes(exchange, posicoes):
         ULTIMO_RESUMO = agora
         
 def thread_bot():
-    import traceback
     global db, modelo
     try:
         print("🚀 Iniciando bot como Background Worker...")
@@ -288,17 +287,23 @@ def thread_bot():
         db = iniciar_firebase()
         print("✅ Firebase inicializado.")
 
-        modelo = modelo_inicial if modelo_inicial is not None else joblib.load(MODELO_PATH)
-        print("✅ Modelo carregado")
-
-        enviar_telegram("🔔 Bot RSI iniciado no Render (Background Worker)")
-
         exchange = ccxt.kucoin({
             "enableRateLimit": True,
             "options": {"adjustForTimeDifference": True},
         })
         exchange.load_markets()
         moedas = [s for s in exchange.symbols if s.endswith("/USDT")]
+        print(f"🔁 {len(moedas)} moedas carregadas.")
+
+        # ✅ Atualizar documentos e preços antes de carregar o modelo
+        atualizar_precos_de_entrada(exchange)
+        atualizar_documentos_firestore()
+
+        # ✅ Carregar modelo agora com dados atualizados
+        modelo = modelo_inicial if modelo_inicial is not None else joblib.load(MODELO_PATH)
+        print("✅ Modelo carregado")
+
+        enviar_telegram("🔔 Bot RSI iniciado no Render (Background Worker)")
 
         while True:
             global ULTIMO_TREINO
@@ -312,8 +317,6 @@ def thread_bot():
                 except Exception as e:
                     print(f"⚠️ Erro ao treinar automaticamente: {e}")
 
-            atualizar_precos_de_entrada(exchange)
-            atualizar_documentos_firestore()
             analisar_oportunidades(exchange, moedas)
             avaliar_resultados(exchange)
             acompanhar_posicoes(exchange, carregar_posicoes())
