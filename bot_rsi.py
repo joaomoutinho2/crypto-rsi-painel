@@ -403,8 +403,10 @@ def thread_bot():
         moedas = [s for s in exchange.symbols if s.endswith("/USDT")]
         print(f"🔁 {len(moedas)} moedas carregadas.")
 
-        atualizar_precos_de_entrada(exchange)
-        atualizar_documentos_firestore()
+        atualizar_precos_de_entrada(exchange, limite=50)
+        print("✅ Preços de entrada atualizados.")
+        atualizar_documentos_firestore(limite=100)
+        print("✅ Documentos sem resultado atualizados.")
 
         print("🧠 A treinar modelo antes de iniciar...")
         modelo = treinar_modelo_automaticamente()
