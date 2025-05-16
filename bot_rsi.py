@@ -9,6 +9,7 @@ import joblib
 import ccxt
 import pandas as pd
 import traceback
+import gc
 from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
@@ -184,14 +185,14 @@ def analisar_oportunidades(exchange, moedas):
     print("🧪 [DEBUG] analisar_oportunidades começou...")
     oportunidades = []
 
+    moedas = moedas[:200]  # Limite temporário para evitar excesso de uso de RAM
+
     for moeda in moedas:
         print(f"🧪 [DEBUG] Analisando {moeda}")
         try:
-            # Apenas 1 chamada à API por moeda
             candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
             df = pd.DataFrame(candles, columns=["t", "open", "high", "low", "close", "volume"])
 
-            # Calcular indicadores uma única vez por moeda
             df["RSI"] = RSIIndicator(close=df["close"]).rsi()
             df["EMA"] = EMAIndicator(close=df["close"]).ema_indicator()
             macd_obj = MACD(close=df["close"])
@@ -202,7 +203,6 @@ def analisar_oportunidades(exchange, moedas):
             df["BB_inf"] = bb.bollinger_lband()
             df["BB_sup"] = bb.bollinger_hband()
 
-            # Últimos valores
             rsi = df["RSI"].iat[-1]
             preco = df["close"].iat[-1]
             ema = df["EMA"].iat[-1]
@@ -242,12 +242,8 @@ def analisar_oportunidades(exchange, moedas):
                     "volume↑" if vol > vol_med else None,
                     "abaixo BB" if preco < bb_inf else None
                 ]))
-
-                oportunidades.append((
-                    abs(entrada["MACD_diff"].iloc[0]),
-                    f"🚨 {moeda}: Prev={previsao_pct:+.2f}% | RSI={rsi:.2f} MACD={macd:.2f}/{macd_sig:.2f} | {sinais}"
-                ))
-
+                oportunidades.append((abs(entrada["MACD_diff"].iloc[0]),
+                    f"🚨 {moeda}: Prev={previsao_pct:+.2f}% | RSI={rsi:.2f} MACD={macd:.2f}/{macd_sig:.2f} | {sinais}"))
                 guardar_estrategia_firestore(moeda, "ENTRADA", preco, sinais, rsi, previsao_pct)
 
         except Exception as exc:
@@ -256,6 +252,8 @@ def analisar_oportunidades(exchange, moedas):
     oportunidades.sort(reverse=True)
     for _, mensagem in oportunidades[:MAX_ALERTAS_POR_CICLO]:
         enviar_telegram(mensagem)
+
+    gc.collect()  # Limpar memória após análise intensa
 
 
 def avaliar_resultados(exchange, limite=1000):
