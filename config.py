@@ -1,8 +1,5 @@
 # config.py
 
-# Lista de moedas a acompanhar
-MOEDAS = ['SOL/USDT', 'BTC/USDT', 'ETH/USDT']
-
 # Timeframe para os dados de mercado
 TIMEFRAME = '1h'
 

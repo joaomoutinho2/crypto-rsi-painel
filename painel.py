@@ -25,8 +25,6 @@ from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.volatility import BollingerBands
 from streamlit_autorefresh import st_autorefresh
-
-from config import MOEDAS, LOG_PATH
 from firebase_config import iniciar_firebase
 from firebase_admin import firestore
 from telegram_alert import enviar_telegram
