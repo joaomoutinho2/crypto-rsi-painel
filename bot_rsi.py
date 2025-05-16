@@ -188,7 +188,6 @@ def analisar_oportunidades(exchange, moedas):
     moedas = moedas[:200]  # Limite temporário para evitar excesso de uso de RAM
 
     for moeda in moedas:
-        print(f"🧪 [DEBUG] Analisando {moeda}")
         try:
             candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
             df = pd.DataFrame(candles, columns=["t", "open", "high", "low", "close", "volume"])
@@ -222,8 +221,7 @@ def analisar_oportunidades(exchange, moedas):
             }])
 
             previsao_pct = modelo.predict(entrada)[0] if modelo else 0.0
-            print(f"🧪 [DEBUG] Previsão (%): {previsao_pct:.2f}")
-
+            
             registo = {
                 "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Moeda": moeda,
@@ -310,17 +308,13 @@ def avaliar_resultados(exchange, limite=1000):
                         "resultado": resultado_pct,
                         "avaliado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     })
-                    print(f"✅ Atualizado doc {doc_id} | {moeda}: {resultado_pct:.2f}%")
                     atualizados += 1
 
                 except Exception as e:
                     erros += 1
                     print(f"⚠️ Erro ao obter preço de {moeda} para doc {doc_id}: {e}")
 
-        print(f"\n📊 Atualização concluída:")
-        print(f"   ✅ {atualizados} documentos atualizados com resultado (%)")
-        print(f"   ⚠️ {ignorados} ignorados por falta de dados")
-        print(f"   ❌ {erros} com erro ao obter preço")
+        print(f"📊 Avaliação concluída: {atualizados} atualizados, {ignorados} ignorados, {erros} erros.")  
 
     except Exception as exc:
         print(f"❌ Erro ao avaliar previsões: {exc}")
