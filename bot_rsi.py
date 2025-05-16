@@ -185,7 +185,7 @@ def analisar_oportunidades(exchange, moedas):
     print("🧪 [DEBUG] analisar_oportunidades começou...")
     oportunidades = []
 
-    moedas = moedas[:200]  # Limite temporário para evitar excesso de uso de RAM
+    moedas = moedas[:100]  # Limite temporário para evitar excesso de uso de RAM
 
     for moeda in moedas:
         try:
