@@ -1,5 +1,6 @@
 # bot_rsi.py — Versão Corrigida e Otimizada para Background Worker no Render
 # --------------------------------------------------
+print("✅ bot_rsi.py carregado")
 
 import os
 import time
