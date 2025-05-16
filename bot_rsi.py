@@ -470,7 +470,7 @@ def thread_bot():
                         avaliar_resultados(exchange)
                         ULTIMA_AVALIACAO_RESULTADO = agora
                     except Exception as e:
-                    print(f"⚠️ Erro ao avaliar previsões: {e}")
+                        print(f"⚠️ Erro ao avaliar previsões: {e}")
                 else:
                     print("ℹ️ Nenhuma previsão pendente a avaliar.")
 
