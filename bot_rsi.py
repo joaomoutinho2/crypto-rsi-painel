@@ -387,7 +387,7 @@ def avaliar_previsoes_pendentes():
             moeda = dados.get("Moeda")
             preco_entrada = dados.get("preco_entrada")
 
-            if not moeda ou preco_entrada is None:
+            if not moeda or preco_entrada is None:
                 continue
 
             try:
