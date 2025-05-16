@@ -1,7 +1,7 @@
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from firebase_config import iniciar_firebase
 from datetime import datetime
 import base64
@@ -28,7 +28,6 @@ def carregar_dados_treino():
         for doc in docs:
             data = doc.to_dict()
 
-            # Validar campos
             if not all(k in data for k in campos_necessarios):
                 ignorados += 1
                 continue
@@ -36,12 +35,12 @@ def carregar_dados_treino():
                 ignorados += 1
                 continue
             try:
-                valor_resultado = float(data["resultado"])
-                data["target"] = 1 if valor_resultado > 0 else 0
-                registos.append(data)
-            except Exception:
+                float(data["resultado"])
+            except:
                 ignorados += 1
                 continue
+
+            registos.append(data)
 
         if not registos:
             print("❌ Nenhum registo válido encontrado para treino.")
@@ -56,12 +55,11 @@ def carregar_dados_treino():
         return None, 0
 
 # 🎯 Treinar e guardar modelo
-
 def treinar_modelo_e_guardar():
     df, _ = carregar_dados_treino()
     if df is None or len(df) < 2:
         print("❌ Dados insuficientes para treino.")
-        return None
+        return
 
     features = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position"]
     X = df[features]
@@ -69,46 +67,49 @@ def treinar_modelo_e_guardar():
 
     try:
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-        modelo = RandomForestClassifier(n_estimators=100, random_state=42)
+        modelo = RandomForestRegressor(n_estimators=100, random_state=42)
         modelo.fit(X_train, y_train)
 
         y_pred = modelo.predict(X_test)
-        acc = accuracy_score(y_test, y_pred)
-        relatorio = classification_report(y_test, y_pred, output_dict=True)
-        matriz = confusion_matrix(y_test, y_pred)
-        matriz_str = "\n".join(["\t".join(map(str, row)) for row in matriz])
+        mse = mean_squared_error(y_test, y_pred)
+        mae = mean_absolute_error(y_test, y_pred)
+        r2 = r2_score(y_test, y_pred)
 
+        print(f"✅ Modelo treinado: R²={r2:.4f} | MAE={mae:.4f} | MSE={mse:.4f}")
 
-        print(f"✅ Modelo treinado com acurácia: {acc:.4f}")
+        # 💾 Serializar modelo
+        buffer = io.BytesIO()
+        joblib.dump(modelo, buffer)
+        modelo_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-        # ☁️ Guardar apenas os metadados
+        # ☁️ Guardar resultados no Firestore
         resultado_doc = {
             "data_treino": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "features": features,
-            "modelo": "RandomForestClassifier",
-            "acuracia": acc,
-            "relatorio": relatorio,
-            "matriz_confusao": matriz_str,
-            "resultado": "treinado"
+            "modelo": "RandomForestRegressor",
+            "mae": mae,
+            "mse": mse,
+            "r2": r2,
+            "modelo_serializado": modelo_base64,
+            "tipo_treino": "regressao"
         }
         db.collection("modelos_treinados").add(resultado_doc)
-        print("📤 Metadados do modelo guardados em Firestore.")
+        print("📤 Resultados do modelo guardados em Firestore com sucesso.")
 
         return modelo
 
     except Exception as e:
         print(f"❌ Erro ao treinar ou guardar modelo: {e}")
-        return None
 
-
-# 🔁 Treino automático externo (para thread_bot)
+# 🔁 Treino automático externo (para uso no bot)
 def treinar_modelo_automaticamente():
     try:
         print("🧠 A treinar modelo automaticamente...")
-        treinar_modelo_e_guardar()
+        return treinar_modelo_e_guardar()
     except Exception as e:
         print(f"❌ Erro no treino automático: {e}")
+        return None
 
-# 🔧 Função principal para testes manuais
+# 🔧 Execução manual
 if __name__ == "__main__":
     treinar_modelo_e_guardar()

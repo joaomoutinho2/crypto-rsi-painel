@@ -1,31 +1,19 @@
 ﻿# bot_rsi.py — Versão Corrigida e Otimizada para Background Worker no Render
 # --------------------------------------------------
-print("🔍 Testando imports...")
-try:
-    import os
-    print("✅ Importado: os")
-    import time
-    print("✅ Importado: time")
-    import joblib
-    print("✅ Importado: joblib")
-    import ccxt
-    print("✅ Importado: ccxt")
-    import pandas as pd
-    print("✅ Importado: pandas")
-    import traceback
-    print("✅ Importado: traceback")
-    from datetime import datetime, timedelta
-    print("✅ Importado: datetime, timedelta")
-    from ta.momentum import RSIIndicator
-    print("✅ Importado: RSIIndicator")
-    from ta.trend import EMAIndicator, MACD
-    print("✅ Importado: EMAIndicator, MACD")
-    from ta.volatility import BollingerBands
-    print("✅ Importado: BollingerBands")
-    from config import TIMEFRAME
-    print("✅ Importado: TIMEFRAME")
-except Exception as e:
-    print(f"❌ Erro ao importar: {e}")
+# bot_rsi.py — Versão Corrigida e Otimizada para Background Worker no Render
+# --------------------------------------------------
+
+import os
+import time
+import joblib
+import ccxt
+import pandas as pd
+import traceback
+from datetime import datetime, timedelta
+from ta.momentum import RSIIndicator
+from ta.trend import EMAIndicator, MACD
+from ta.volatility import BollingerBands
+from config import TIMEFRAME
 
 print("🔍 Testando inicialização do Firebase...")
 try:
@@ -193,19 +181,17 @@ def atualizar_precos_de_entrada(exchange, timeframe="1h", limite=1000):
 
 
 def analisar_oportunidades(exchange, moedas):
-    from ta.momentum import RSIIndicator
-    from ta.trend import EMAIndicator, MACD
-    from ta.volatility import BollingerBands
-
     print("🧪 [DEBUG] analisar_oportunidades começou...")
     oportunidades = []
 
     for moeda in moedas:
         print(f"🧪 [DEBUG] Analisando {moeda}")
         try:
+            # Apenas 1 chamada à API por moeda
             candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
             df = pd.DataFrame(candles, columns=["t", "open", "high", "low", "close", "volume"])
 
+            # Calcular indicadores uma única vez por moeda
             df["RSI"] = RSIIndicator(close=df["close"]).rsi()
             df["EMA"] = EMAIndicator(close=df["close"]).ema_indicator()
             macd_obj = MACD(close=df["close"])
@@ -216,7 +202,7 @@ def analisar_oportunidades(exchange, moedas):
             df["BB_inf"] = bb.bollinger_lband()
             df["BB_sup"] = bb.bollinger_hband()
 
-            # Extrair os últimos valores
+            # Últimos valores
             rsi = df["RSI"].iat[-1]
             preco = df["close"].iat[-1]
             ema = df["EMA"].iat[-1]
@@ -227,7 +213,6 @@ def analisar_oportunidades(exchange, moedas):
             bb_inf = df["BB_inf"].iat[-1]
             bb_sup = df["BB_sup"].iat[-1]
 
-            # Calcular variáveis de entrada
             entrada = pd.DataFrame([{
                 "RSI": rsi,
                 "EMA_diff": (preco - ema) / ema if ema != 0 else 0,
@@ -236,24 +221,20 @@ def analisar_oportunidades(exchange, moedas):
                 "BB_position": (preco - bb_inf) / (bb_sup - bb_inf) if bb_sup > bb_inf else 0.5,
             }])
 
-            # Previsão
-            prev_array = modelo.predict(entrada) if modelo else [0]
-            prev = int(prev_array[0]) if prev_array[0] in [0, 1] else 0
-            print(f"🧪 [DEBUG] Previsão: {prev}")
+            previsao_pct = modelo.predict(entrada)[0] if modelo else 0.0
+            print(f"🧪 [DEBUG] Previsão (%): {previsao_pct:.2f}")
 
-            # Guardar no Firestore
             registo = {
                 "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Moeda": moeda,
                 "preco_entrada": preco,
                 **entrada.iloc[0].to_dict(),
-                "Previsao": prev,
-                "resultado": None  # Será calculado quando a posição for fechada
+                "Previsao": previsao_pct,
+                "resultado": None
             }
             guardar_previsao_firestore(registo)
 
-            # Só alerta se previsão for positiva
-            if prev == 1:
+            if previsao_pct > 1.0:
                 sinais = ", ".join(filter(None, [
                     "RSI<30" if rsi < 30 else None,
                     "preço>EMA" if preco > ema else None,
@@ -264,18 +245,18 @@ def analisar_oportunidades(exchange, moedas):
 
                 oportunidades.append((
                     abs(entrada["MACD_diff"].iloc[0]),
-                    f"🚨 {moeda}: RSI={rsi:.2f} MACD={macd:.2f}/{macd_sig:.2f} | {sinais}"
+                    f"🚨 {moeda}: Prev={previsao_pct:+.2f}% | RSI={rsi:.2f} MACD={macd:.2f}/{macd_sig:.2f} | {sinais}"
                 ))
 
-                guardar_estrategia_firestore(moeda, "ENTRADA", preco, sinais, rsi, (preco - ema) / ema * 100)
+                guardar_estrategia_firestore(moeda, "ENTRADA", preco, sinais, rsi, previsao_pct)
 
         except Exception as exc:
             print(f"⚠️ Erro ao analisar {moeda}: {exc}")
 
-    # Enviar apenas top N oportunidades ordenadas por força do MACD
     oportunidades.sort(reverse=True)
     for _, mensagem in oportunidades[:MAX_ALERTAS_POR_CICLO]:
         enviar_telegram(mensagem)
+
 
 def avaliar_resultados(exchange, limite=1000):
     print("📈 A avaliar previsões pendentes...")
@@ -304,6 +285,16 @@ def avaliar_resultados(exchange, limite=1000):
                 if data.get("resultado") not in [None, "pendente", "null", ""]:
                     continue  # já foi avaliado
 
+                # Verificar se foi avaliado recentemente
+                avaliado_em_str = data.get("avaliado_em")
+                if avaliado_em_str:
+                    try:
+                        avaliado_em = datetime.strptime(avaliado_em_str, "%Y-%m-%d %H:%M:%S")
+                        if datetime.now() - avaliado_em < timedelta(hours=24):
+                            continue
+                    except Exception:
+                        pass  # ignora erro de parsing
+
                 moeda = data.get("Moeda")
                 preco_entrada = data.get("preco_entrada")
 
@@ -318,7 +309,8 @@ def avaliar_resultados(exchange, limite=1000):
                     resultado_pct = round((preco_atual - preco_entrada) / preco_entrada * 100, 2)
 
                     db.collection("historico_previsoes").document(doc_id).update({
-                        "resultado": resultado_pct
+                        "resultado": resultado_pct,
+                        "avaliado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     })
                     print(f"✅ Atualizado doc {doc_id} | {moeda}: {resultado_pct:.2f}%")
                     atualizados += 1
@@ -334,8 +326,6 @@ def avaliar_resultados(exchange, limite=1000):
 
     except Exception as exc:
         print(f"❌ Erro ao avaliar previsões: {exc}")
-
-
 
 def acompanhar_posicoes(exchange, posicoes):
     global ULTIMO_RESUMO
@@ -379,6 +369,7 @@ def avaliar_previsoes_pendentes():
         exchange = ccxt.kucoin()
         exchange.load_markets()
         atualizados = 0
+        ignorados = 0
 
         for doc in documentos:
             dados = doc.to_dict()
@@ -387,7 +378,19 @@ def avaliar_previsoes_pendentes():
             moeda = dados.get("Moeda")
             preco_entrada = dados.get("preco_entrada")
 
+            # Verificar se já foi avaliado recentemente
+            avaliado_em_str = dados.get("avaliado_em")
+            if avaliado_em_str:
+                try:
+                    avaliado_em = datetime.strptime(avaliado_em_str, "%Y-%m-%d %H:%M:%S")
+                    if datetime.now() - avaliado_em < timedelta(hours=24):
+                        ignorados += 1
+                        continue
+                except:
+                    pass  # Se erro no parsing, continua normalmente
+
             if not moeda or preco_entrada is None:
+                ignorados += 1
                 continue
 
             try:
@@ -395,17 +398,31 @@ def avaliar_previsoes_pendentes():
                 preco_atual = ticker["last"]
                 variacao = ((preco_atual - preco_entrada) / preco_entrada) * 100
 
-                doc_ref.update({"resultado": variacao})
+                doc_ref.update({
+                    "resultado": variacao,
+                    "avaliado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                })
                 atualizados += 1
                 print(f"✅ Atualizado {moeda} com variação {variacao:.2f}%")
 
             except Exception as e:
                 print(f"⚠️ Erro ao obter preço para {moeda}: {e}")
 
-        print(f"📊 {atualizados} documentos atualizados com o campo 'resultado'.")
+        print(f"\n📊 Avaliação pendente concluída:")
+        print(f"   ✅ {atualizados} documentos atualizados")
+        print(f"   ⚠️ {ignorados} ignorados (já avaliados ou incompletos)")
 
     except Exception as e:
-        print(f"❌ Erro ao avaliar previsões: {e}")
+        print(f"❌ Erro ao avaliar previsões pendentes: {e}")
+
+    
+def existem_previsoes_pendentes():
+    try:
+        docs = db.collection("historico_previsoes").where("resultado", "in", [None, "pendente", ""]).limit(1).stream()
+        return any(True for _ in docs)
+    except Exception as e:
+        print(f"⚠️ Erro ao verificar previsões pendentes: {e}")
+        return False
         
 def thread_bot():
     global db, modelo, ULTIMO_TREINO, ULTIMA_AVALIACAO_RESULTADO
@@ -448,11 +465,15 @@ def thread_bot():
                     print(f"⚠️ Erro ao treinar automaticamente: {e}")
 
             if (agora - ULTIMA_AVALIACAO_RESULTADO).total_seconds() > INTERVALO_AVALIACAO_HORAS * 3600:
-                try:
-                    avaliar_resultados(exchange)
-                    ULTIMA_AVALIACAO_RESULTADO = agora
-                except Exception as e:
+                if existem_previsoes_pendentes():
+                    try:
+                        avaliar_resultados(exchange)
+                        ULTIMA_AVALIACAO_RESULTADO = agora
+                    except Exception as e:
                     print(f"⚠️ Erro ao avaliar previsões: {e}")
+                else:
+                    print("ℹ️ Nenhuma previsão pendente a avaliar.")
+
 
             atualizar_precos_de_entrada(exchange)
             atualizar_documentos_firestore()
