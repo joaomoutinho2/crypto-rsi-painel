@@ -1,56 +1,39 @@
+"""
+🔁 Atualização de Resultados no Firestore
+
+Este script varre a coleção 'historico_previsoes' e preenche o campo 'resultado'
+com base na previsão do modelo, sempre que o campo estiver definido como 'pendente'.
+"""
+
 from firebase_config import iniciar_firebase
-from datetime import datetime
-import ccxt
+from treino_modelo_firebase import modelo
+import pandas as pd
 
-# 🔄 Exchange
-EXCHANGE = ccxt.kucoin()
-
-# 🔥 Inicializar Firestore
+# Inicializar Firestore
 db = iniciar_firebase()
 
+# 🛠️ Atualizar previsões pendentes no Firestore
 def atualizar_resultados_firestore():
-    # ⚠️ Filtra previsões que ainda não têm resultado
-    docs = db.collection("historico_previsoes").where("resultado", "==", None).stream()
-    contador = 0
+    """
+    Atualiza documentos em 'historico_previsoes' com resultado pendente.
+    Usa o modelo carregado para prever com base nos campos técnicos.
+    """
+    try:
+        docs = db.collection("historico_previsoes").where("resultado", "==", "pendente").stream()
+        total = 0
+        atualizados = 0
 
-    for doc in docs:
-        data = doc.to_dict()
-        try:
-            moeda = data.get("moeda")
-            ema_diff = float(data.get("EMA_diff", 0))
-            data_entrada = data.get("data")
+        for doc in docs:
+            data = doc.to_dict()
+            total += 1
+            campos = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position"]
+            if all(c in data for c in campos):
+                entrada = pd.DataFrame([data])[campos]
+                pred = modelo.predict(entrada)[0]
+                db.document(doc.reference.path).update({"resultado": float(pred)})
+                atualizados += 1
 
-            if data_entrada is None or not moeda:
-                continue
+        print(f"✅ Atualizados: {atualizados} de {total} documentos pendentes.")
 
-            # Corrige formato se necessário
-            if hasattr(data_entrada, 'replace'):
-                data_entrada = data_entrada.replace(tzinfo=None)
-
-            # 🔁 Obter preço atual
-            ticker = EXCHANGE.fetch_ticker(moeda)
-            preco_atual = ticker["last"]
-
-            # 🧠 Estimar preço de entrada
-            preco_entrada_estimado = max(preco_atual / (1 + ema_diff), 0.0001)
-            variacao = (preco_atual - preco_entrada_estimado) / preco_entrada_estimado * 100
-            resultado = 1 if variacao >= 2 else 0
-
-            # 🔄 Atualizar documento
-            doc.reference.update({
-                "preco_atual": preco_atual,
-                "variacao": variacao,
-                "resultado": resultado
-            })
-
-            print(f"✅ Atualizado {moeda} com resultado {resultado} ({variacao:.2f}%)")
-            contador += 1
-
-        except Exception as e:
-            print(f"⚠️ Erro em {data.get('moeda', '???')}: {e}")
-
-    print(f"\n🟢 {contador} previsões atualizadas com sucesso.")
-
-# Executável diretamente
-if __name__ == "__main__":
-    atualizar_resultados_firestore()
+    except Exception as e:
+        print(f"❌ Erro na atualização de resultados: {e}")

@@ -1,64 +1,45 @@
+"""
+🤖 Script de Treino e Avaliação de Modelo de Previsão
 
-import os
-import time
-import gc
-from datetime import datetime, timedelta
-import ccxt
+Este ficheiro serve para treinar um modelo com dados do Firestore e avaliar os seus resultados.
+Utiliza o módulo treino_modelo_firebase.py e imprime métricas de desempenho.
+"""
+
+import joblib
+from treino_modelo_firebase import modelo as modelo_treinado
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from firebase_config import iniciar_firebase
-from treino_modelo_firebase import treinar_modelo_automaticamente
+import pandas as pd
 
+# Inicializar Firebase (opcional se já estiver no treino)
 db = iniciar_firebase()
 
-def avaliar_resultados(exchange, limite=50):
-    try:
-        colecao = db.collection("historico_previsoes")
-        docs = list(colecao.limit(limite).stream())
-        atualizados = 0
-        ignorados = 0
-        erros = 0
-        for doc in docs:
-            data = doc.to_dict()
-            doc_id = doc.id
-            if data.get("resultado") not in [None, "pendente", "null", ""]:
-                continue
-            avaliado_em_str = data.get("avaliado_em")
-            if avaliado_em_str:
-                try:
-                    avaliado_em = datetime.strptime(avaliado_em_str, "%Y-%m-%d %H:%M:%S")
-                    if datetime.now() - avaliado_em < timedelta(hours=24):
-                        continue
-                except Exception:
-                    pass
-            moeda = data.get("Moeda")
-            preco_entrada = data.get("preco_entrada")
-            if not moeda or preco_entrada is None:
-                ignorados += 1
-                continue
-            try:
-                ticker = exchange.fetch_ticker(moeda)
-                preco_atual = ticker["last"]
-                resultado_pct = round((preco_atual - preco_entrada) / preco_entrada * 100, 2)
-                db.collection("historico_previsoes").document(doc_id).update({
-                    "resultado": resultado_pct,
-                    "avaliado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                })
-                atualizados += 1
-            except Exception as e:
-                erros += 1
-                print(f"⚠️ Erro em {moeda}: {e}")
-        print(f"✅ Avaliação: {atualizados} atualizados, {ignorados} ignorados, {erros} erros.")
-    except Exception as e:
-        print(f"❌ Erro geral na avaliação: {e}")
+# 📊 Função para avaliar previsões de teste
+
+def avaliar_resultados(y_verdadeiro, y_previsto):
+    mae = mean_absolute_error(y_verdadeiro, y_previsto)
+    mse = mean_squared_error(y_verdadeiro, y_previsto)
+    print(f"\n📉 Avaliação do Modelo:")
+    print(f"MAE: {mae:.4f}")
+    print(f"MSE: {mse:.4f}")
+
+# 🚀 Função principal
 
 def main():
-    print("🧠 A treinar modelo com dados do Firestore...")
-    modelo = treinar_modelo_automaticamente()
-    print("✅ Modelo treinado com sucesso.")
-    print("📊 A avaliar previsões pendentes...")
-    exchange = ccxt.kucoin({"enableRateLimit": True})
-    exchange.load_markets()
-    avaliar_resultados(exchange)
-    gc.collect()
+    print("\n🚀 Avaliação do modelo iniciado...")
+    if modelo_treinado is None:
+        print("❌ Modelo não encontrado. Certifica-te que foi treinado antes.")
+        return
+
+    # Exemplo de dados de teste
+    dados_teste = pd.DataFrame([
+        {"RSI": 30, "EMA_diff": -10, "MACD_diff": -1, "Volume_relativo": 1200, "BB_position": 0.1},
+        {"RSI": 70, "EMA_diff": 12, "MACD_diff": 2, "Volume_relativo": 800, "BB_position": 0.9},
+    ])
+    y_real = [0, 1]  # valores reais esperados para comparação
+
+    previsoes = modelo_treinado.predict(dados_teste)
+    avaliar_resultados(y_real, previsoes)
 
 if __name__ == "__main__":
     main()

@@ -1,197 +1,139 @@
-﻿
+﻿"""
+🔍 Bot de Análise de Oportunidades de Investimento em Criptomoedas
+
+Este bot analisa moedas USDT no KuCoin, calcula indicadores técnicos, regista oportunidades de entrada e acompanha posições em aberto.
+Envia alertas via Telegram e atualiza o Firestore com os resultados.
+"""
+
 import os
-import time
-import gc
 import joblib
 import ccxt
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
-from config import TIMEFRAME
-from firebase_config import iniciar_firebase
 
-# Firebase
+from firebase_config import iniciar_firebase
+from telegram_alert import enviar_telegram
+
+# Inicializa Firebase
 db = iniciar_firebase()
 
-# Telegram
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+# 🔁 Carregar modelo
+MODELO_PATH = "modelo_treinado.pkl"
+modelo = joblib.load(MODELO_PATH)
 
-def enviar_telegram(mensagem):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("⚠️ Telegram não configurado –", mensagem)
-        return
-    try:
-        import requests
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
-        requests.post(url, data=data)
-    except Exception as e:
-        print(f"❌ Telegram: {e}")
-
+# 📊 Função para carregar posições atuais do Firestore
 def carregar_posicoes():
-    if db is None:
-        return []
+    docs = db.collection("posicoes").stream()
+    return [doc.to_dict() for doc in docs]
+
+# 🔥 Guardar previsão ou estratégia
+
+def guardar_firestore(colecao, dados):
     try:
-        return [doc.to_dict() for doc in db.collection("posicoes").stream()]
+        dados["timestamp"] = datetime.utcnow()
+        db.collection(colecao).add(dados)
     except Exception as e:
-        print(f"❌ Erro carregar posições: {e}")
-        return []
+        print(f"❌ Erro ao guardar em {colecao}: {e}")
 
-def guardar_previsao_firestore(reg):
-    if db is None:
-        return
-    if not reg.get("Moeda") or reg.get("preco_entrada") is None:
-        return
-    try:
-        db.collection("historico_previsoes").add(reg)
-    except Exception as exc:
-        print(f"❌ Firestore previsões: {exc}")
+# 🔁 Atualizar documentos pendentes com previsão
 
-def guardar_estrategia_firestore(moeda, direcao, preco, sinais, rsi, variacao):
-    if db is None:
-        return
-    try:
-        db.collection("estrategias").add({
-            "Moeda": moeda,
-            "Direcao": direcao,
-            "Preço": preco,
-            "Sinais": sinais,
-            "RSI": rsi,
-            "Variação (%)": variacao,
-            "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        })
-    except Exception as exc:
-        print(f"❌ Firestore estratégias: {exc}")
+def atualizar_documentos_firestore():
+    docs = db.collection("historico_previsoes").where("resultado", "==", "pendente").stream()
+    atualizados = 0
+    for doc in docs:
+        dados = doc.to_dict()
+        if all(c in dados for c in ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position"]):
+            entrada = pd.DataFrame([dados])
+            previsao = modelo.predict(entrada)[0]
+            db.document(doc.reference.path).update({"resultado": float(previsao)})
+            atualizados += 1
+    print(f"🛠️ {atualizados} documentos atualizados com 'resultado'.")
 
-def atualizar_documentos_firestore(limite=20):
-    try:
-        colecao = db.collection("historico_previsoes")
-        docs = colecao.limit(limite).stream()
-        for doc in docs:
-            data = doc.to_dict()
-            if "resultado" not in data:
-                doc.reference.set({"resultado": None}, merge=True)
-    except Exception as e:
-        print(f"❌ Erro ao atualizar documentos: {e}")
+# 💸 Atualizar preços de entrada
 
-def atualizar_precos_de_entrada(exchange, timeframe="1h", limite=20):
-    try:
-        colecao = db.collection("historico_previsoes").order_by("Data")
-        docs = colecao.limit(limite).stream()
-        for doc in docs:
-            data = doc.to_dict()
-            ref = doc.reference
-            moeda = data.get("Moeda")
-            data_str = data.get("Data")
-            if not moeda or not data_str or "preco_entrada" in data:
-                continue
-            dt = datetime.strptime(data_str, "%Y-%m-%d %H:%M:%S")
-            timestamp = int(time.mktime((dt - timedelta(minutes=5)).timetuple())) * 1000
-            candles = exchange.fetch_ohlcv(moeda, timeframe=timeframe, since=timestamp, limit=5)
-            if candles:
-                preco_close = min(candles, key=lambda x: abs(x[0] - int(dt.timestamp() * 1000)))[4]
-                ref.set({"preco_entrada": preco_close}, merge=True)
-    except Exception as e:
-        print(f"❌ Erro ao atualizar preços de entrada: {e}")
+def atualizar_precos_de_entrada():
+    posicoes = db.collection("posicoes").stream()
+    exchange = ccxt.kucoin()
+    for doc in posicoes:
+        dados = doc.to_dict()
+        if "preco_entrada" not in dados:
+            simbolo = dados["simbolo"]
+            ticker = exchange.fetch_ticker(simbolo)
+            preco = ticker["last"]
+            db.document(doc.reference.path).update({"preco_entrada": preco})
 
-def analisar_oportunidades(exchange, moedas, modelo, max_alertas=5):
-    moedas = moedas[:30]
+# 🧠 Analisar novas oportunidades
+
+def analisar_oportunidades():
+    exchange = ccxt.kucoin()
+    exchange.load_markets()
+    symbols = [s for s in exchange.symbols if s.endswith("/USDT")][:200]
     oportunidades = []
-    for moeda in moedas:
-        try:
-            candles = exchange.fetch_ohlcv(moeda, timeframe=TIMEFRAME, limit=100)
-            df = pd.DataFrame(candles, columns=["t", "open", "high", "low", "close", "volume"])
-            df["RSI"] = RSIIndicator(close=df["close"]).rsi()
-            df["EMA"] = EMAIndicator(close=df["close"]).ema_indicator()
-            macd_obj = MACD(close=df["close"])
-            df["MACD"] = macd_obj.macd()
-            df["MACD_signal"] = macd_obj.macd_signal()
-            df["vol_med"] = df["volume"].rolling(14).mean()
-            bb = BollingerBands(close=df["close"])
-            df["BB_inf"] = bb.bollinger_lband()
-            df["BB_sup"] = bb.bollinger_hband()
-            rsi = df["RSI"].iat[-1]
-            preco = df["close"].iat[-1]
-            ema = df["EMA"].iat[-1]
-            macd = df["MACD"].iat[-1]
-            macd_sig = df["MACD_signal"].iat[-1]
-            vol = df["volume"].iat[-1]
-            vol_med = df["vol_med"].iat[-1] or 1
-            bb_inf = df["BB_inf"].iat[-1]
-            bb_sup = df["BB_sup"].iat[-1]
-            entrada = pd.DataFrame([{
-                "RSI": rsi,
-                "EMA_diff": (preco - ema) / ema if ema != 0 else 0,
-                "MACD_diff": macd - macd_sig,
-                "Volume_relativo": vol / vol_med,
-                "BB_position": (preco - bb_inf) / (bb_sup - bb_inf) if bb_sup > bb_inf else 0.5,
-            }])
-            dados = entrada.iloc[0].to_dict()
-            for k in dados:
-                if isinstance(dados[k], (np.bool_, bool)):
-                    dados[k] = bool(dados[k])
-                elif isinstance(dados[k], (np.integer, np.int64)):
-                    dados[k] = int(dados[k])
-                elif isinstance(dados[k], (np.floating, np.float64)):
-                    dados[k] = float(dados[k])
-            registo = {
-                "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "Moeda": moeda,
-                "preco_entrada": float(preco),
-                **dados,
-                "Previsao": float(previsao_pct),
-                "resultado": None
-            }
-            guardar_previsao_firestore(registo)
-            if previsao_pct > 1.0:
-                sinais = ", ".join(filter(None, [
-                    "RSI<30" if rsi < 30 else None,
-                    "preço>EMA" if preco > ema else None,
-                    "MACD>sinal" if macd > macd_sig else None,
-                    "volume↑" if vol > vol_med else None,
-                    "abaixo BB" if preco < bb_inf else None
-                ]))
-                oportunidades.append((abs(dados["MACD_diff"]),
-                    f"🚨 {moeda}: Prev={previsao_pct:+.2f}% | RSI={rsi:.2f} MACD={macd:.2f}/{macd_sig:.2f} | {sinais}"))
-                guardar_estrategia_firestore(moeda, "ENTRADA", preco, sinais, rsi, previsao_pct)
-            del df, entrada, candles, macd_obj, bb
-            gc.collect()
-        except Exception as e:
-            print(f"⚠️ Erro ao analisar {moeda}: {e}")
-    oportunidades.sort(reverse=True)
-    for _, mensagem in oportunidades[:max_alertas]:
-        enviar_telegram(mensagem)
 
-def acompanhar_posicoes(exchange, posicoes):
-    linhas = []
+    for simbolo in symbols:
+        try:
+            ohlcv = exchange.fetch_ohlcv(simbolo, timeframe="1h", limit=100)
+            df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+            df["RSI"] = RSIIndicator(df["close"]).rsi()
+            df["EMA"] = EMAIndicator(df["close"]).ema_indicator()
+            df["EMA_diff"] = df["close"] - df["EMA"]
+            macd = MACD(df["close"])
+            df["MACD_diff"] = macd.macd_diff()
+            bb = BollingerBands(df["close"])
+            df["BB_position"] = (df["close"] - bb.bollinger_lband()) / (bb.bollinger_hband() - bb.bollinger_lband())
+
+            df.dropna(inplace=True)
+            entrada = df.iloc[-1][["RSI", "EMA_diff", "MACD_diff", "volume", "BB_position"]].rename({"volume": "Volume_relativo"})
+            entrada = entrada.to_frame().T
+            previsao = modelo.predict(entrada)[0]
+
+            if previsao == 1:
+                mensagem = f"🚀 Oportunidade: {simbolo}\nRSI: {entrada['RSI'].values[0]:.2f}"
+                enviar_telegram(mensagem)
+                guardar_firestore("historico_previsoes", {
+                    **entrada.to_dict(orient="records")[0],
+                    "simbolo": simbolo,
+                    "previsao": float(previsao),
+                    "resultado": "pendente"
+                })
+                oportunidades.append(simbolo)
+        except Exception as e:
+            print(f"⚠️ Erro ao analisar {simbolo}: {e}")
+
+    print(f"🔔 {len(oportunidades)} oportunidades identificadas.")
+
+# 📈 Acompanhar posições abertas e sugerir saída se objetivo atingido
+
+def acompanhar_posicoes():
+    posicoes = carregar_posicoes()
+    exchange = ccxt.kucoin()
     for pos in posicoes:
         try:
-            ticker = exchange.fetch_ticker(pos["moeda"])
-            preco_atual = ticker["last"]
+            simbolo = pos["simbolo"]
             preco_entrada = pos["preco_entrada"]
-            montante = pos["montante"]
-            valor_atual = preco_atual * (montante / preco_entrada)
-            lucro = valor_atual - montante
-            percent = (lucro / montante) * 100
-            linhas.append(f"{pos['moeda']}: {percent:+.2f}% | Entrada: {preco_entrada:.4f} | Atual: {preco_atual:.4f} | Lucro: {lucro:+.2f} USDT")
+            objetivo = pos.get("objetivo", 10)
+            ticker = exchange.fetch_ticker(simbolo)
+            preco_atual = ticker["last"]
+            lucro = ((preco_atual - preco_entrada) / preco_entrada) * 100
+
+            if lucro >= objetivo:
+                mensagem = f"💰 Recomendado vender {simbolo}\nLucro: {lucro:.2f}%"
+                enviar_telegram(mensagem)
         except Exception as e:
-            print(f"⚠️ Erro ao acompanhar {pos['moeda']}: {e}")
-    if linhas:
-        enviar_telegram("📈 Atualização de posições:" + "".join(linhas))
+            print(f"❌ Erro ao acompanhar {simbolo}: {e}")
+
+# 🚀 Função principal
 
 def main():
-    modelo = joblib.load("modelo_treinado.pkl")
-    exchange = ccxt.kucoin({"enableRateLimit": True})
-    exchange.load_markets()
-    moedas = [s for s in exchange.symbols if s.endswith("/USDT")][:30]
-    atualizar_precos_de_entrada(exchange)
+    print("\n🚀 Iniciando ciclo de análise...")
     atualizar_documentos_firestore()
-    analisar_oportunidades(exchange, moedas, modelo)
-    acompanhar_posicoes(exchange, carregar_posicoes())
+    analisar_oportunidades()
+    acompanhar_posicoes()
+    atualizar_precos_de_entrada()
 
 if __name__ == "__main__":
     main()

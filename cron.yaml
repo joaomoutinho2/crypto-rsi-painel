@@ -1,7 +1,0 @@
-
-# Render Cron Job - Agendar execução diária do bot_treino.py
-cron:
-  - name: "Treino e Avaliação Diário"
-    path: "/run-treino"
-    schedule: "0 8 * * *"  # Todos os dias às 08:00 UTC (09:00 em Portugal)
-    method: GET
