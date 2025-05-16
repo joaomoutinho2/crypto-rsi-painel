@@ -75,7 +75,9 @@ def treinar_modelo_e_guardar():
         y_pred = modelo.predict(X_test)
         acc = accuracy_score(y_test, y_pred)
         relatorio = classification_report(y_test, y_pred, output_dict=True)
-        matriz = confusion_matrix(y_test, y_pred).tolist()
+        matriz = confusion_matrix(y_test, y_pred)
+        matriz_str = "\n".join(["\t".join(map(str, row)) for row in matriz])
+
 
         print(f"✅ Modelo treinado com acurácia: {acc:.4f}")
 
@@ -86,7 +88,7 @@ def treinar_modelo_e_guardar():
             "modelo": "RandomForestClassifier",
             "acuracia": acc,
             "relatorio": relatorio,
-            "matriz_confusao": matriz,
+            "matriz_confusao": matriz_str,
             "resultado": "treinado"
         }
         db.collection("modelos_treinados").add(resultado_doc)

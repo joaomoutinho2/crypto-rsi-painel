@@ -58,7 +58,7 @@ def guardar_previsao_firestore(reg):
         db.collection("historico_previsoes").add(reg)
     except Exception as exc:
         print(f"❌ Firestore previsões: {exc}")
-        
+
 def guardar_estrategia_firestore(moeda, direcao, preco, sinais, rsi, variacao):
     if db is None:
         return
@@ -116,46 +116,59 @@ def atualizar_documentos_firestore(limite=1000):
         print(f"❌ Erro ao atualizar documentos: {exc}")
 
 
-def atualizar_precos_de_entrada(exchange, timeframe="1h"):
+def atualizar_precos_de_entrada(exchange, timeframe="1h", limite=1000):
     print("🛠️ Atualizando documentos antigos com campo 'preco_entrada'...")
     try:
-        docs = db.collection("historico_previsoes").stream()
+        colecao = db.collection("historico_previsoes").order_by("Data")
+        ultimo_doc = None
         atualizados = 0
         total = 0
 
-        for doc in docs:
-            data = doc.to_dict()
-            ref = doc.reference
-            total += 1
+        while True:
+            query = colecao.limit(limite)
+            if ultimo_doc:
+                query = query.start_after(ultimo_doc)
 
-            if "preco_entrada" in data:
-                continue
+            docs = query.get()
+            if not docs:
+                break
 
-            moeda = data.get("Moeda")
-            data_str = data.get("Data")
+            for doc in docs:
+                total += 1
+                data = doc.to_dict()
+                ref = doc.reference
 
-            try:
-                if not moeda or not data_str:
+                if "preco_entrada" in data:
                     continue
 
-                dt = datetime.strptime(data_str, "%Y-%m-%d %H:%M:%S")
-                timestamp = int(time.mktime((dt - timedelta(minutes=5)).timetuple())) * 1000
-                candles = exchange.fetch_ohlcv(moeda, timeframe=timeframe, since=timestamp, limit=5)
-                if not candles:
-                    continue
+                moeda = data.get("Moeda")
+                data_str = data.get("Data")
 
-                candle_proximo = min(candles, key=lambda x: abs(x[0] - int(dt.timestamp() * 1000)))
-                preco_close = candle_proximo[4]
-                ref.set({"preco_entrada": preco_close}, merge=True)
-                atualizados += 1
+                try:
+                    if not moeda or not data_str:
+                        continue
 
-            except Exception as e:
-                print(f"⚠️ Erro em {moeda} @ {data_str}: {e}")
+                    dt = datetime.strptime(data_str, "%Y-%m-%d %H:%M:%S")
+                    timestamp = int(time.mktime((dt - timedelta(minutes=5)).timetuple())) * 1000
+                    candles = exchange.fetch_ohlcv(moeda, timeframe=timeframe, since=timestamp, limit=5)
+                    if not candles:
+                        continue
+
+                    candle_proximo = min(candles, key=lambda x: abs(x[0] - int(dt.timestamp() * 1000)))
+                    preco_close = candle_proximo[4]
+                    ref.set({"preco_entrada": preco_close}, merge=True)
+                    atualizados += 1
+
+                except Exception as e:
+                    print(f"⚠️ Erro em {moeda} @ {data_str}: {e}")
+
+            ultimo_doc = docs[-1]
 
         print(f"📊 {atualizados}/{total} documentos atualizados com 'preco_entrada'.")
 
     except Exception as e:
         print(f"❌ Erro ao atualizar preços de entrada: {e}")
+
 
 def analisar_oportunidades(exchange, moedas):
     from ta.momentum import RSIIndicator
@@ -242,51 +255,64 @@ def analisar_oportunidades(exchange, moedas):
     for _, mensagem in oportunidades[:MAX_ALERTAS_POR_CICLO]:
         enviar_telegram(mensagem)
 
-def avaliar_resultados(exchange):
+def avaliar_resultados(exchange, limite=1000):
     print("📈 A avaliar previsões pendentes...")
 
     try:
-        docs = db.collection("historico_previsoes").stream()
+        colecao = db.collection("historico_previsoes")
+        ultimo_doc = None
         atualizados = 0
+        ignorados = 0
+        erros = 0
 
-        for doc in docs:
-            data = doc.to_dict()
-            doc_id = doc.id
+        while True:
+            query = colecao.limit(limite)
+            if ultimo_doc:
+                query = query.start_after(ultimo_doc)
 
-            # Verificar se resultado precisa de ser atualizado
-            if data.get("resultado") not in [None, "pendente", "null", ""]:
-                continue  # já foi avaliado
+            docs = list(query.stream())
+            if not docs:
+                break
 
-            moeda = data.get("Moeda")
-            preco_entrada = data.get("preco_entrada")
+            for doc in docs:
+                data = doc.to_dict()
+                doc_id = doc.id
+                ultimo_doc = doc
 
-            if not moeda or preco_entrada is None:
-                print(f"⚠️ Ignorado doc {doc_id} sem moeda ou preco_entrada.")
-                continue
+                if data.get("resultado") not in [None, "pendente", "null", ""]:
+                    continue  # já foi avaliado
 
-            try:
-                ticker = exchange.fetch_ticker(moeda)
-                preco_atual = ticker["last"]
+                moeda = data.get("Moeda")
+                preco_entrada = data.get("preco_entrada")
 
-                resultado_pct = round((preco_atual - preco_entrada) / preco_entrada * 100, 2)
+                if not moeda or preco_entrada is None:
+                    ignorados += 1
+                    print(f"⚠️ Ignorado doc {doc_id} sem moeda ou preco_entrada.")
+                    continue
 
-                db.collection("historico_previsoes").document(doc_id).update({
-                    "resultado": resultado_pct
-                })
+                try:
+                    ticker = exchange.fetch_ticker(moeda)
+                    preco_atual = ticker["last"]
+                    resultado_pct = round((preco_atual - preco_entrada) / preco_entrada * 100, 2)
 
-                print(f"✅ Atualizado doc {doc_id} | {moeda}: {resultado_pct:.2f}%")
-                atualizados += 1
+                    db.collection("historico_previsoes").document(doc_id).update({
+                        "resultado": resultado_pct
+                    })
+                    print(f"✅ Atualizado doc {doc_id} | {moeda}: {resultado_pct:.2f}%")
+                    atualizados += 1
 
-            except Exception as e:
-                print(f"⚠️ Erro ao obter preço de {moeda} para doc {doc_id}: {e}")
+                except Exception as e:
+                    erros += 1
+                    print(f"⚠️ Erro ao obter preço de {moeda} para doc {doc_id}: {e}")
 
-        if atualizados == 0:
-            print("ℹ️ Nenhum documento precisou de atualização.")
-        else:
-            print(f"✅ {atualizados} documentos atualizados com resultado (%)")
+        print(f"\n📊 Atualização concluída:")
+        print(f"   ✅ {atualizados} documentos atualizados com resultado (%)")
+        print(f"   ⚠️ {ignorados} ignorados por falta de dados")
+        print(f"   ❌ {erros} com erro ao obter preço")
 
     except Exception as exc:
         print(f"❌ Erro ao avaliar previsões: {exc}")
+
 
 
 def acompanhar_posicoes(exchange, posicoes):
