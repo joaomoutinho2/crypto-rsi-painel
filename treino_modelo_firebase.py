@@ -61,11 +61,11 @@ def treinar_modelo_e_guardar():
     df, _ = carregar_dados_treino()
     if df is None or len(df) < 2:
         print("❌ Dados insuficientes para treino.")
-        return
+        return None
 
     features = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position"]
     X = df[features]
-    y = df["target"]
+    y = df["resultado"]
 
     try:
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
@@ -79,12 +79,7 @@ def treinar_modelo_e_guardar():
 
         print(f"✅ Modelo treinado com acurácia: {acc:.4f}")
 
-        # 💾 Serializar modelo para base64
-        buffer = io.BytesIO()
-        joblib.dump(modelo, buffer)
-        modelo_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-        # ☁️ Guardar no Firestore
+        # ☁️ Guardar apenas os metadados
         resultado_doc = {
             "data_treino": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "features": features,
@@ -92,15 +87,17 @@ def treinar_modelo_e_guardar():
             "acuracia": acc,
             "relatorio": relatorio,
             "matriz_confusao": matriz,
-            "modelo_serializado": modelo_base64,
             "resultado": "treinado"
         }
         db.collection("modelos_treinados").add(resultado_doc)
-        print("📤 Resultados do modelo guardados em Firestore com modelo serializado.")
+        print("📤 Metadados do modelo guardados em Firestore.")
+
         return modelo
-        
+
     except Exception as e:
         print(f"❌ Erro ao treinar ou guardar modelo: {e}")
+        return None
+
 
 # 🔁 Treino automático externo (para thread_bot)
 def treinar_modelo_automaticamente():

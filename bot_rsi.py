@@ -51,11 +51,14 @@ def enviar_telegram(mensagem):
 def guardar_previsao_firestore(reg):
     if db is None:
         return
+    if not reg.get("Moeda") or reg.get("preco_entrada") is None:
+        print(f"⚠️ Ignorando previsão incompleta: {reg}")
+        return
     try:
         db.collection("historico_previsoes").add(reg)
     except Exception as exc:
         print(f"❌ Firestore previsões: {exc}")
-
+        
 def guardar_estrategia_firestore(moeda, direcao, preco, sinais, rsi, variacao):
     if db is None:
         return
@@ -81,15 +84,37 @@ def carregar_posicoes():
         print(f"❌ Erro carregar posições: {e}")
         return []
 
-def atualizar_documentos_firestore():
+def atualizar_documentos_firestore(limite=1000):
     if db is None:
         return
+    print("🔁 A atualizar documentos sem campo 'resultado'...")
     try:
-        for doc in db.collection("historico_previsoes").stream():
-            if "resultado" not in doc.to_dict():
-                db.collection("historico_previsoes").document(doc.id).set({"resultado": None}, merge=True)
+        colecao = db.collection("historico_previsoes")
+        ultimo_doc = None
+        total_atualizados = 0
+
+        while True:
+            query = colecao.limit(limite)
+            if ultimo_doc:
+                query = query.start_after(ultimo_doc)
+
+            docs = list(query.stream())
+            if not docs:
+                break
+
+            for doc in docs:
+                data = doc.to_dict()
+                if "resultado" not in data:
+                    doc.reference.set({"resultado": None}, merge=True)
+                    total_atualizados += 1
+
+            ultimo_doc = docs[-1]
+
+        print(f"✅ {total_atualizados} documentos atualizados com campo 'resultado: None'.")
+
     except Exception as exc:
-        print(f"❌ Atualizar docs: {exc}")
+        print(f"❌ Erro ao atualizar documentos: {exc}")
+
 
 def atualizar_precos_de_entrada(exchange, timeframe="1h"):
     print("🛠️ Atualizando documentos antigos com campo 'preco_entrada'...")
@@ -217,7 +242,7 @@ def analisar_oportunidades(exchange, moedas):
     for _, mensagem in oportunidades[:MAX_ALERTAS_POR_CICLO]:
         enviar_telegram(mensagem)
 
-def avaliar_resultados():
+def avaliar_resultados(exchange):
     print("📈 A avaliar previsões pendentes...")
 
     try:
@@ -374,7 +399,7 @@ def thread_bot():
 
             if (agora - ULTIMA_AVALIACAO_RESULTADO).total_seconds() > INTERVALO_AVALIACAO_HORAS * 3600:
                 try:
-                    avaliar_resultados()
+                    avaliar_resultados(exchange)
                     ULTIMA_AVALIACAO_RESULTADO = agora
                 except Exception as e:
                     print(f"⚠️ Erro ao avaliar previsões: {e}")
