@@ -5,6 +5,7 @@ import gc
 import joblib
 import ccxt
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
@@ -129,13 +130,20 @@ def analisar_oportunidades(exchange, moedas, modelo, max_alertas=5):
                 "Volume_relativo": vol / vol_med,
                 "BB_position": (preco - bb_inf) / (bb_sup - bb_inf) if bb_sup > bb_inf else 0.5,
             }])
-            previsao_pct = modelo.predict(entrada)[0] if modelo else 0.0
+            dados = entrada.iloc[0].to_dict()
+            for k in dados:
+                if isinstance(dados[k], (np.bool_, bool)):
+                    dados[k] = bool(dados[k])
+                elif isinstance(dados[k], (np.integer, np.int64)):
+                    dados[k] = int(dados[k])
+                elif isinstance(dados[k], (np.floating, np.float64)):
+                    dados[k] = float(dados[k])
             registo = {
                 "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Moeda": moeda,
-                "preco_entrada": preco,
-                **entrada.iloc[0].to_dict(),
-                "Previsao": previsao_pct,
+                "preco_entrada": float(preco),
+                **dados,
+                "Previsao": float(previsao_pct),
                 "resultado": None
             }
             guardar_previsao_firestore(registo)
@@ -147,7 +155,7 @@ def analisar_oportunidades(exchange, moedas, modelo, max_alertas=5):
                     "volume↑" if vol > vol_med else None,
                     "abaixo BB" if preco < bb_inf else None
                 ]))
-                oportunidades.append((abs(entrada["MACD_diff"].iloc[0]),
+                oportunidades.append((abs(dados["MACD_diff"]),
                     f"🚨 {moeda}: Prev={previsao_pct:+.2f}% | RSI={rsi:.2f} MACD={macd:.2f}/{macd_sig:.2f} | {sinais}"))
                 guardar_estrategia_firestore(moeda, "ENTRADA", preco, sinais, rsi, previsao_pct)
             del df, entrada, candles, macd_obj, bb
