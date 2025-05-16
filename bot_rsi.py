@@ -1,20 +1,39 @@
 ﻿# bot_rsi.py — Versão Corrigida e Otimizada para Background Worker no Render
 # --------------------------------------------------
-print("✅ Início do bot_rsi.py")
-import sys; print("🧠 Versão do Python:", sys.version)
+print("🔍 Testando imports...")
+try:
+    import os
+    print("✅ Importado: os")
+    import time
+    print("✅ Importado: time")
+    import joblib
+    print("✅ Importado: joblib")
+    import ccxt
+    print("✅ Importado: ccxt")
+    import pandas as pd
+    print("✅ Importado: pandas")
+    import traceback
+    print("✅ Importado: traceback")
+    from datetime import datetime, timedelta
+    print("✅ Importado: datetime, timedelta")
+    from ta.momentum import RSIIndicator
+    print("✅ Importado: RSIIndicator")
+    from ta.trend import EMAIndicator, MACD
+    print("✅ Importado: EMAIndicator, MACD")
+    from ta.volatility import BollingerBands
+    print("✅ Importado: BollingerBands")
+    from config import TIMEFRAME
+    print("✅ Importado: TIMEFRAME")
+except Exception as e:
+    print(f"❌ Erro ao importar: {e}")
 
-
-import os
-import time
-import joblib
-import ccxt
-import pandas as pd
-import traceback
-from datetime import datetime, timedelta
-from ta.momentum import RSIIndicator
-from ta.trend import EMAIndicator, MACD
-from ta.volatility import BollingerBands
-from config import TIMEFRAME
+print("🔍 Testando inicialização do Firebase...")
+try:
+    from firebase_config import iniciar_firebase
+    db = iniciar_firebase()
+    print("✅ Firebase inicializado com sucesso.")
+except Exception as e:
+    print(f"❌ Erro ao inicializar o Firebase: {e}")
 
 # 🔹 Constantes globais
 db = None
@@ -368,7 +387,7 @@ def avaliar_previsoes_pendentes():
             moeda = dados.get("Moeda")
             preco_entrada = dados.get("preco_entrada")
 
-            if not moeda or preco_entrada is None:
+            if not moeda ou preco_entrada is None:
                 continue
 
             try:
