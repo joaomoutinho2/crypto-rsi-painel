@@ -1,15 +1,3 @@
-"""
-📊 Painel RSI com Indicadores Técnicos Avançados
-
-Este painel permite acompanhar sinais de entrada/saída baseados em RSI, EMA, MACD, Bollinger Bands,
-gerir posições ativas, vendas realizadas e visualizar estratégias automáticas. Assegura comunicação
-com Firestore e envio de alertas por Telegram.
-"""
-
-# ============================
-# 📦 IMPORTAÇÕES E CONFIGURAÇÃO
-# ============================
-
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -17,26 +5,28 @@ import ccxt
 import os
 import json
 import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from datetime import datetime
 from io import BytesIO
-import base64
 
 from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.volatility import BollingerBands
+
 from streamlit_autorefresh import st_autorefresh
+
+from config import MOEDAS, LOG_PATH
 from firebase_config import iniciar_firebase
 from firebase_admin import firestore
 from telegram_alert import enviar_telegram
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-# ✅ Inicializar Firestore com secrets
-st.set_page_config(page_title="Painel RSI", layout="wide")
+# ✅ Inicializar Firestore com secrets do Streamlit
 db = iniciar_firebase(usando_secrets=True, secrets=st.secrets)
 
 # ============================
-# 🔁 FUNÇÕES FIRESTORE
+# 🔁 Funções Firestore
 # ============================
 
 def carregar_posicoes():
@@ -44,7 +34,7 @@ def carregar_posicoes():
         docs = db.collection("posicoes").stream()
         return [doc.to_dict() for doc in docs]
     except Exception as e:
-        st.error(f"❌ Erro ao carregar posições: {e}")
+        st.error(f"❌ Erro ao carregar posições do Firestore: {e}")
         return []
 
 def guardar_posicoes(posicoes):
@@ -54,13 +44,13 @@ def guardar_posicoes(posicoes):
         for pos in posicoes:
             db.collection("posicoes").add(pos)
     except Exception as e:
-        st.error(f"❌ Erro ao guardar posições: {e}")
+        st.error(f"❌ Erro ao guardar posições no Firestore: {e}")
 
 def guardar_venda(registro):
     try:
         db.collection("historico_vendas").add(registro)
     except Exception as e:
-        st.error(f"❌ Erro ao guardar venda: {e}")
+        st.error(f"❌ Erro ao guardar histórico de vendas: {e}")
 
 def carregar_historico_vendas():
     try:
@@ -72,33 +62,42 @@ def carregar_historico_vendas():
 
 def carregar_modelo_treinado():
     try:
-        docs = db.collection("modelos_treinados").order_by("data_treino", direction=firestore.Query.DESCENDING).limit(1).stream()
+        docs = db.collection("modelos_treinados").order_by("data_treino", direction=firestore.Query.DESCENDING).limit(5).stream()
         for doc in docs:
             dados = doc.to_dict()
-            modelo_b64 = dados.get("modelo")
-            if modelo_b64:
-                buffer = BytesIO(base64.b64decode(modelo_b64))
-                return joblib.load(buffer)
-        st.warning("⚠️ Nenhum modelo encontrado.")
+            if "resultado" not in dados:
+                st.warning(f"⚠️ Documento ignorado: {doc.id} - Faltam campos: ['resultado']")
+                continue
+            return doc
+        return None
     except Exception as e:
-        st.error(f"❌ Erro ao carregar modelo: {e}")
-    return None
+        st.error(f"❌ Erro ao carregar dados do modelo treinado: {e}")
+        return None
 
 # ============================
-# 🎛️ SIDEBAR E OPÇÕES DE CONTROLO
+# ⚙️ Configuração Geral
 # ============================
 
-st.title("📈 Painel RSI com Indicadores Técnicos")
+st.set_page_config(page_title="Painel RSI", layout="wide")
+st.title("📈 Painel RSI com Indicadores Técnicos Avançados")
 
-st.sidebar.header("⚙️ Filtros e Opções")
+st.sidebar.header("⚙️ Filtros")
 tempo_refresco = st.sidebar.slider("⏳ Atualizar a cada (segundos)", 10, 300, 60, step=10)
 timeframe = st.sidebar.selectbox("🕒 Intervalo de tempo", ["15m", "1h", "4h"], index=1)
-exchange_nome = st.sidebar.selectbox("🌐 Exchange", ["kucoin", "coinbase", "kraken"], index=0)
-secao = st.sidebar.radio("📂 Secções", ["📊 Painel RSI", "💼 Minhas Posições", "📜 Histórico de Vendas", "⚙️ Estratégias"])
+exchanges_disponiveis = ['kucoin', 'coinbase', 'kraken']
+exchange_nome = st.sidebar.selectbox("🌐 Exchange", exchanges_disponiveis, index=0)
 
-# Refresh automático
+st.sidebar.markdown("---")
+secao = st.sidebar.radio("📂 Secções", [
+    "📊 Painel RSI",
+    "💼 Minhas Posições",
+    "📈 Estratégias",
+    "📜 Histórico de Vendas",
+    "📊 Último Modelo Treinado",
+    "📊 Desempenho do Bot",
+])
+
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
-# ... (mantém-se o código já refatorado anteriormente)
 
 # ============================
 # 📊 ÚLTIMO MODELO TREINADO
@@ -108,15 +107,14 @@ if secao == "📊 Último Modelo Treinado":
     doc = carregar_modelo_treinado()
     if doc:
         modelo = doc.to_dict()
-        st.markdown(f"**🧠 Modelo:** [dados ocultos base64]") 
-        st.markdown(f"**📅 Data de treino:** {modelo.get('data_treino', 'N/A')}")
-        st.markdown(f"**🎯 Acurácia:** {modelo.get('acuracia', 0):.2%}")
+        st.markdown(f"**🧠 Modelo:** {modelo['modelo']}") 
+        st.markdown(f"**📅 Data de treino:** {modelo['data_treino']}")
+        st.markdown(f"**🎯 Acurácia:** {modelo['acuracia']:.2%}")
 
         st.markdown("---")
         st.subheader("📊 Relatório de Classificação")
         relatorio = modelo.get("relatorio", {})
-        if relatorio:
-            st.dataframe(pd.DataFrame(relatorio).T)
+        st.dataframe(pd.DataFrame(relatorio).T)
 
         st.subheader("🧱 Matriz de Confusão")
         matriz = pd.DataFrame(
@@ -126,45 +124,44 @@ if secao == "📊 Último Modelo Treinado":
         )
         st.dataframe(matriz)
     else:
-        st.warning("⚠️ Nenhum modelo treinado disponível.")
+        st.warning("Nenhum modelo treinado disponível no momento.")
 
 # ============================
-# 📊 PAINEL RSI AO VIVO
+# 📊 PAINEL RSI
 # ============================
 if secao == "📊 Painel RSI":
-    st.title("📊 Painel RSI ao Vivo")
+    st.title("📊 Painel RSI")
     exchange = getattr(ccxt, exchange_nome)()
 
     for moeda in MOEDAS:
         try:
             candles = exchange.fetch_ohlcv(moeda, timeframe=timeframe, limit=100)
-            df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume"])
+            df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
-            # 📈 Indicadores Técnicos
-            df["RSI"] = RSIIndicator(df["close"]).rsi()
-            df["SMA"] = SMAIndicator(df["close"]).sma_indicator()
-            df["EMA"] = EMAIndicator(df["close"]).ema_indicator()
-            df["volume_medio"] = df["volume"].rolling(window=14).mean()
+            df['RSI'] = RSIIndicator(close=df['close'], window=14).rsi()
+            df['SMA'] = SMAIndicator(close=df['close'], window=14).sma_indicator()
+            df['EMA'] = EMAIndicator(close=df['close'], window=14).ema_indicator()
+            df['volume_medio'] = df['volume'].rolling(window=14).mean()
 
-            macd = MACD(df["close"])
-            df["MACD"] = macd.macd()
-            df["MACD_signal"] = macd.macd_signal()
+            macd = MACD(close=df['close'])
+            df['MACD'] = macd.macd()
+            df['MACD_signal'] = macd.macd_signal()
 
-            bb = BollingerBands(df["close"])
-            df["BB_upper"] = bb.bollinger_hband()
-            df["BB_lower"] = bb.bollinger_lband()
+            bb = BollingerBands(close=df['close'], window=20, window_dev=2)
+            df['BB_upper'] = bb.bollinger_hband()
+            df['BB_lower'] = bb.bollinger_lband()
 
             # Últimos valores
-            rsi = df["RSI"].iloc[-1]
-            preco = df["close"].iloc[-1]
-            sma = df["SMA"].iloc[-1]
-            ema = df["EMA"].iloc[-1]
-            vol = df["volume"].iloc[-1]
-            vol_med = df["volume_medio"].iloc[-1]
-            macd_val = df["MACD"].iloc[-1]
-            macd_sig = df["MACD_signal"].iloc[-1]
-            bb_sup = df["BB_upper"].iloc[-1]
-            bb_inf = df["BB_lower"].iloc[-1]
+            rsi = df['RSI'].iloc[-1]
+            preco = df['close'].iloc[-1]
+            sma = df['SMA'].iloc[-1]
+            ema = df['EMA'].iloc[-1]
+            vol = df['volume'].iloc[-1]
+            vol_med = df['volume_medio'].iloc[-1]
+            macd_val = df['MACD'].iloc[-1]
+            macd_sig = df['MACD_signal'].iloc[-1]
+            bb_sup = df['BB_upper'].iloc[-1]
+            bb_inf = df['BB_lower'].iloc[-1]
 
             st.subheader(f"📊 {moeda} ({exchange_nome})")
             col1, col2, col3 = st.columns(3)
@@ -172,37 +169,25 @@ if secao == "📊 Painel RSI":
             col2.metric("📈 RSI", f"{rsi:.2f}")
             col3.metric("📊 SMA", f"{sma:.2f}")
 
-            col4, col5, col6 = st.columns(3)
-            col4.metric("📉 MACD", f"{macd_val:.2f}")
-            col5.metric("🎯 MACD Signal", f"{macd_sig:.2f}")
-            col6.metric("📊 Volume Atual", f"{vol:.0f}")
-
-            col7, col8 = st.columns(2)
-            col7.metric("📈 EMA", f"{ema:.2f}")
-            col8.metric("📦 Vol. Médio", f"{vol_med:.0f}")
-
-            st.caption(f"📉 Bollinger Bands: Inferior = {bb_inf:.2f}, Superior = {bb_sup:.2f}")
-
-            alerta = "ℹ️ Neutro"
+            alerta = "NEUTRO"
+            emoji = "ℹ️"
             if rsi < 30:
-                alerta = "🟢 Sinal de entrada (RSI < 30)"
+                alerta = "ENTRADA"
+                emoji = "🔔"
             elif rsi > 70:
-                alerta = "🔴 Sinal de saída (RSI > 70)"
-            st.success(alerta if "Sinal" in alerta else alerta)
+                alerta = "SAÍDA"
+                emoji = "🔔"
 
-        except Exception as e:
-            st.error(f"❌ Erro ao processar {moeda}: {e}")
-# ... (continuação do painel anterior)
+            st.markdown(f"**{emoji} Estado: {alerta}**")
 
-            # 🔎 Confirmações adicionais
             confirmacao = []
-            if alerta == "🟢 Sinal de entrada (RSI < 30)":
+            if alerta == "ENTRADA":
                 if preco > sma: confirmacao.append("✅ preço > SMA")
                 if preco > ema: confirmacao.append("✅ preço > EMA")
                 if vol > vol_med: confirmacao.append("✅ volume alto")
                 if macd_val > macd_sig: confirmacao.append("✅ MACD p/ cima")
                 if preco < bb_inf: confirmacao.append("✅ fora da Bollinger inferior")
-            elif alerta == "🔴 Sinal de saída (RSI > 70)":
+            elif alerta == "SAÍDA":
                 if preco < sma: confirmacao.append("✅ preço < SMA")
                 if preco < ema: confirmacao.append("✅ preço < EMA")
                 if vol > vol_med: confirmacao.append("✅ volume alto")
@@ -211,19 +196,20 @@ if secao == "📊 Painel RSI":
             else:
                 confirmacao.append("ℹ️ RSI neutro")
 
-            st.markdown("📋 **Análise Técnica**: " + " | ".join(confirmacao))
+            st.markdown("📋 **Análise**: " + " | ".join(confirmacao))
 
-            # 📉 Gráfico de preço com indicadores
+            # Gráfico
             fig, ax = plt.subplots(figsize=(10, 4))
             ax.plot(df['close'], label='Preço', color='blue')
             ax.plot(df['SMA'], label='SMA', color='purple', linestyle='--')
             ax.plot(df['EMA'], label='EMA', color='green', linestyle='--')
             ax.plot(df['BB_upper'], label='BB Sup', color='grey', linestyle=':')
             ax.plot(df['BB_lower'], label='BB Inf', color='grey', linestyle=':')
-            ax.set_title(f"{moeda} - Indicadores Técnicos")
+            ax.set_title(f"{moeda} - Preço com SMA/EMA/Bollinger")
             ax.legend()
             st.pyplot(fig)
 
+            # Download do gráfico
             buf = BytesIO()
             fig.savefig(buf, format="png")
             st.download_button(
@@ -236,7 +222,7 @@ if secao == "📊 Painel RSI":
             st.divider()
 
         except Exception as e:
-            st.error(f"❌ Erro ao carregar {moeda}: {e}")
+            st.error(f"Erro ao carregar {moeda}: {e}")
 
 # ============================
 # 💼 REGISTO DE POSIÇÕES
@@ -255,46 +241,171 @@ elif secao == "💼 Minhas Posições":
         submeter = st.form_submit_button("Guardar")
         if submeter and moeda and montante > 0 and preco > 0:
             nova = {
-                "simbolo": moeda,
+                "moeda": moeda,
                 "montante": montante,
                 "preco_entrada": preco,
                 "objetivo": objetivo,
-                "data": datetime.utcnow()
+                "data": datetime.now().strftime("%Y-%m-%d %H:%M")
             }
-            db.collection("posicoes").add(nova)
-            st.success("✅ Posição guardada com sucesso!")
-            st.experimental_rerun()
+            posicoes.append(nova)
+            guardar_posicoes(posicoes)
+            st.success("✅ Posição registada com sucesso!")
+            st.rerun()
 
-    st.subheader("📋 Posições Atuais")
+    st.markdown("---")
+    st.subheader("📊 Posições Atuais com Lucro/Prejuízo")
+
     if posicoes:
-        df_pos = pd.DataFrame(posicoes)
-        st.dataframe(df_pos)
+        exchange = ccxt.kucoin()
+        dados = []
+        for i, pos in enumerate(posicoes):
+            try:
+                ticker = exchange.fetch_ticker(pos['moeda'])
+                preco_atual = ticker['last']
+                investido = pos['montante']
+                preco_entrada = pos['preco_entrada']
+                objetivo = pos.get('objetivo', 10.0)
+
+                valor_atual = preco_atual * (investido / preco_entrada)
+                lucro = valor_atual - investido
+                percent = (lucro / investido) * 100
+                atingiu_objetivo = percent >= objetivo
+
+                dados.append({
+                    "Index": i,
+                    "Moeda": pos['moeda'],
+                    "Data Entrada": pos['data'],
+                    "Preço Entrada": preco_entrada,
+                    "Preço Atual": round(preco_atual, 2),
+                    "Investido (€)": round(investido, 2),
+                    "Valor Atual (€)": round(valor_atual, 2),
+                    "Lucro (€)": round(lucro, 2),
+                    "Variação (%)": round(percent, 2),
+                    "🎯 Objetivo (%)": objetivo,
+                    "🏁 Alvo Atingido": "✅" if atingiu_objetivo else "❌"
+                })
+            except Exception as e:
+                st.error(f"Erro ao buscar {pos['moeda']}: {e}")
+
+        df = pd.DataFrame(dados)
+        df = df.sort_values("Variação (%)", ascending=False)
+
+        # Exibir tabela com estilo condicional
+        def cor_lucro(val):
+            if isinstance(val, (float, int)):
+                if val > 0:
+                    return 'background-color: #d4edda'
+                elif val < 0:
+                    return 'background-color: #f8d7da'
+            return ''
+
+        def cor_alvo(val):
+            return 'background-color: #d4edda' if val == '✅' else ''
+
+        st.dataframe(
+            df.drop(columns=["Index"]).style
+              .applymap(cor_lucro, subset=['Lucro (€)', 'Variação (%)'])
+              .applymap(cor_alvo, subset=['🏁 Alvo Atingido']),
+            use_container_width=True
+        )
+
+        # Edição ou remoção
+        st.markdown("### ✏️ Editar ou Remover Posição")
+        index = st.number_input("Seleciona o índice da posição", min_value=0, max_value=len(posicoes)-1, step=1)
+        pos = posicoes[index]
+
+        with st.form("editar_posicao"):
+            moeda = st.text_input("Moeda", value=pos["moeda"])
+            montante = st.number_input("Montante investido (€)", value=pos["montante"])
+            preco = st.number_input("Preço de entrada (USDT)", value=pos["preco_entrada"])
+            objetivo = st.number_input("Objetivo de lucro (%)", value=pos.get("objetivo", 10.0))
+            editar = st.form_submit_button("💾 Atualizar posição")
+
+            if editar:
+                posicoes[index] = {
+                    "moeda": moeda.upper(),
+                    "montante": montante,
+                    "preco_entrada": preco,
+                    "objetivo": objetivo,
+                    "data": pos["data"]
+                }
+                guardar_posicoes(posicoes)
+                st.success("✅ Posição atualizada!")
+                st.rerun()
+
+        if st.button("🗑️ Remover esta posição"):
+            del posicoes[index]
+            guardar_posicoes(posicoes)
+            st.warning("❌ Posição removida.")
+            st.rerun()
+
+        # ✅ Reforçar posição com atualização Firestore
+        st.markdown("### ➕ Reforçar Posição")
+        novo_montante = st.number_input("Montante adicional (€)", min_value=0.0, key="reforco_montante")
+        novo_preco = st.number_input("Preço da nova compra (USDT)", min_value=0.0, key="reforco_preco")
+        if st.button("Aplicar Reforço", key="botao_reforco"):
+            if novo_montante > 0 and novo_preco > 0:
+                antigo_montante = pos["montante"]
+                antigo_preco = pos["preco_entrada"]
+
+                total_valor = (antigo_montante / antigo_preco) + (novo_montante / novo_preco)
+                novo_total_investido = antigo_montante + novo_montante
+                novo_preco_medio = novo_total_investido / total_valor
+
+                pos["montante"] = round(novo_total_investido, 2)
+                pos["preco_entrada"] = round(novo_preco_medio, 4)
+
+                posicoes[index] = pos
+                guardar_posicoes(posicoes)
+                st.success("✅ Reforço aplicado com sucesso!")
+                st.rerun()
+
+        # Exportar posições
+        csv = df.drop(columns=["Index"]).to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Exportar posições", csv, "posicoes.csv", "text/csv")
     else:
-        st.info("Nenhuma posição registada.")
-# ... (continuação anterior)
+        st.info("Ainda não registaste nenhuma posição.")
+
+# ⚠️ NOVO BLOCO para venda manual por input de preço
+    if posicoes:
+        st.subheader("💸 Vender uma Posição Manualmente")
+        index = st.number_input("Seleciona o índice da posição para vender", min_value=0, max_value=len(posicoes)-1, step=1, key="vender_index")
+        pos = posicoes[index]
+
+        preco_venda_manual = st.number_input("Preço de venda (USDT)", min_value=0.0, key="preco_manual")
+        if st.button("💰 Confirmar Venda Manual"):
+            if preco_venda_manual == 0:
+                st.warning("⚠️ Introduz um preço válido para a venda.")
+            else:
+                preco_entrada = pos["preco_entrada"]
+                investido = pos["montante"]
+                valor_final = preco_venda_manual * (investido / preco_entrada)
+                lucro = valor_final - investido
+                percent = (lucro / investido) * 100
+
+                registro = {
+                    "moeda": pos["moeda"],
+                    "data_venda": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "preco_venda": preco_venda_manual,
+                    "preco_entrada": preco_entrada,
+                    "investido": investido,
+                    "valor_final": round(valor_final, 2),
+                    "lucro": round(lucro, 2),
+                    "percentual": round(percent, 2)
+                }
+
+                guardar_venda(registro)
+                del posicoes[index]
+                guardar_posicoes(posicoes)
+                st.success("✅ Venda registada manualmente com sucesso!")
+                st.rerun()
 
 # ============================
-# 📜 HISTÓRICO DE VENDAS
-# ============================
-elif secao == "📜 Histórico de Vendas":
-    st.title("📜 Histórico de Vendas Realizadas")
-    try:
-        vendas = carregar_historico_vendas()
-        if vendas:
-            df = pd.DataFrame(vendas)
-            st.dataframe(df, use_container_width=True)
-            csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button("📥 Exportar CSV", csv, "historico_vendas.csv", "text/csv")
-        else:
-            st.info("ℹ️ Nenhuma venda registada ainda.")
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
-
-# ============================
-# 📈 ESTRATÉGIAS DETETADAS
+# 📈 ESTRATÉGIAS
 # ============================
 elif secao == "📈 Estratégias":
     st.title("📈 Estratégias Automáticas Detetadas")
+
     try:
         docs = db.collection("estrategias").order_by("Data", direction=firestore.Query.DESCENDING).limit(100).stream()
         estrategias = [doc.to_dict() for doc in docs]
@@ -304,9 +415,27 @@ elif secao == "📈 Estratégias":
             csv = df.to_csv(index=False).encode("utf-8")
             st.download_button("📥 Exportar CSV", csv, "estrategias.csv", "text/csv")
         else:
-            st.info("ℹ️ Nenhuma estratégia registada ainda.")
+            st.info("Nenhuma estratégia registada ainda.")
     except Exception as e:
         st.error(f"❌ Erro ao carregar estratégias: {e}")
+
+# ============================
+# 📜 HISTÓRICO DE VENDAS
+# ============================
+elif secao == "📜 Histórico de Vendas":
+    st.title("📜 Histórico de Vendas Realizadas")
+
+    try:
+        vendas = carregar_historico_vendas()
+        if vendas:
+            df = pd.DataFrame(vendas)
+            st.dataframe(df, use_container_width=True)
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Exportar CSV", csv, "historico_vendas.csv", "text/csv")
+        else:
+            st.info("Nenhuma venda registada ainda.")
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
 
 # ============================
 # 📊 DESEMPENHO DO BOT
@@ -314,32 +443,37 @@ elif secao == "📈 Estratégias":
 elif secao == "📊 Desempenho do Bot":
     st.title("📊 Estado e Desempenho do Bot")
 
-    # 🔎 Progresso do campo 'preco_entrada'
+    # 🛠️ Progresso do campo 'preco_entrada'
     st.subheader("🛠️ Atualização de 'preco_entrada'")
     try:
         docs = db.collection("historico_previsoes").stream()
-        total, com_preco = 0, 0
+        total = 0
+        com_preco = 0
+        sem_preco = 0
+
         for doc in docs:
-            data = doc.to_dict()
             total += 1
+            data = doc.to_dict()
             if "preco_entrada" in data:
                 com_preco += 1
-        sem_preco = total - com_preco
+            else:
+                sem_preco += 1
 
         if total > 0:
+            percent = com_preco / total
             st.write(f"✅ {com_preco} com preço • ❌ {sem_preco} sem preço • Total: {total}")
-            st.progress(com_preco / total)
+            st.progress(percent)
 
             fig, ax = plt.subplots()
             ax.pie([com_preco, sem_preco], labels=["Com preço", "Sem preço"], autopct='%1.1f%%', colors=["#4CAF50", "#F44336"])
             ax.axis("equal")
             st.pyplot(fig)
         else:
-            st.info("ℹ️ Nenhum documento encontrado em 'historico_previsoes'.")
+            st.info("Nenhum documento encontrado em historico_previsoes.")
     except Exception as e:
         st.error(f"❌ Erro ao verificar progresso de 'preco_entrada': {e}")
 
-    # 🎯 Acertos do modelo
+    # 🎯 Acertos vs erros do modelo
     st.subheader("🎯 Taxa de Acerto do Bot")
     try:
         docs = db.collection("historico_previsoes").stream()
@@ -375,6 +509,6 @@ elif secao == "📊 Desempenho do Bot":
             st.bar_chart(lucro_moeda)
             st.dataframe(lucro_moeda.rename("Lucro Total (USDT)").map(lambda x: f"{x:.2f}"), use_container_width=True)
         else:
-            st.info("ℹ️ Ainda não há vendas registadas.")
+            st.info("Ainda não há vendas registadas.")
     except Exception as e:
         st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
