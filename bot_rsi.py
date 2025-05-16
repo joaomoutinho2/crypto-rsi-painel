@@ -1,6 +1,8 @@
 # bot_rsi.py — Versão Corrigida e Otimizada para Background Worker no Render
 # --------------------------------------------------
-print("✅ bot_rsi.py carregado")
+print("✅ Início do bot_rsi.py")
+import sys; print("🧠 Versão do Python:", sys.version)
+
 
 import os
 import time
