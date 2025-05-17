@@ -72,8 +72,13 @@ def analisar_oportunidades(modelo):
             continue
 
         try:
+            time.sleep(0.2)
             ohlcv = exchange.fetch_ohlcv(simbolo, timeframe="1h", limit=100)
             df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+            if df.empty or len(df) < 30:
+                continue
+
             df["RSI"] = RSIIndicator(df["close"]).rsi()
             df["EMA"] = EMAIndicator(df["close"]).ema_indicator()
             df["EMA_diff"] = df["close"] - df["EMA"]
@@ -88,14 +93,17 @@ def analisar_oportunidades(modelo):
             df["volume_medio"] = df["volume"].rolling(window=14).mean()
 
             df.dropna(inplace=True)
+            if df.empty:
+                continue
 
             row = df.iloc[-1]
             entrada = row[["RSI", "EMA_diff", "MACD_diff", "volume", "BB_position"]].rename({"volume": "Volume_relativo"}).to_frame().T
             previsao = modelo.predict(entrada)[0]
 
             if previsao == 1:
+                objetivo = calcular_objetivo_volatilidade(df)
                 força = abs(row["RSI"] - 50) + abs(row["MACD_diff"]) + abs(row["BB_position"] - 0.5)
-                oportunidades.append((simbolo, entrada, força, row))
+                oportunidades.append((simbolo, entrada, força, row, objetivo))
 
         except Exception as e:
             print(f"⚠️ Erro ao analisar {simbolo}: {e}")
@@ -106,7 +114,7 @@ def analisar_oportunidades(modelo):
         print("⏳ Limite de alertas por hora atingido.")
         return
 
-    for simbolo, entrada, _, row in oportunidades[:restantes]:
+    for simbolo, entrada, _, row, objetivo in oportunidades[:restantes]:
         preco = row["close"]
         mensagem = (
             f"🚨 Oportunidade: {simbolo}\n"
@@ -115,12 +123,29 @@ def analisar_oportunidades(modelo):
             f"📈 MACD: {row['MACD']:.2f} / Sinal: {row['MACD_signal']:.2f}\n"
             f"📉 Volume: {row['volume']:.2f} (média: {row['volume_medio']:.2f})\n"
             f"🎯 Bollinger: [{row['BB_lower']:.2f} ~ {row['BB_upper']:.2f}]\n"
+            f"📌 Objetivo sugerido: {objetivo:.2f}%\n"
             f"⚙️ Entrada considerada promissora ✅"
         )
         enviar_telegram(mensagem)
-        guardar_previsao(simbolo, entrada, previsao=1)
+
+        doc = entrada.to_dict(orient="records")[0]
+        doc.update({
+            "simbolo": simbolo,
+            "previsao": 1,
+            "resultado": "pendente",
+            "objetivo": objetivo,
+            "timestamp": datetime.utcnow()
+        })
+        db.collection("historico_previsoes").add(doc)
 
     print(f"✅ Enviados {min(restantes, len(oportunidades))} alertas nesta execução.")
+
+# 🎯 Função para calcular objetivo automaticamente com base na volatilidade
+
+def calcular_objetivo_volatilidade(df, fator=2.5):
+    volatilidades = (df['high'] - df['low']) / df['low'] * 100
+    media_volatilidade = volatilidades.rolling(window=14).mean().iloc[-1]
+    return round(media_volatilidade * fator, 2)  # objetivo em %
 
 # 🚀 Execução principal
 def main():
