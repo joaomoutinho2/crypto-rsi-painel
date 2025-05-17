@@ -1,12 +1,11 @@
 """
-🤖 Treino Automático de Modelo de Machine Learning com Firestore
+🤖 Treino Automático de Modelo de Machine Learning com Firestore (Avançado)
 
-Este bot é executado por cron job (ex: no Render) e tem como funções:
-- Carregar dados reais da coleção 'historico_previsoes'
-- Treinar um modelo de regressão (RandomForest)
-- Avaliar o desempenho com MAE, MSE e R²
-- Guardar o modelo treinado localmente (modelo_treinado.pkl)
-- Codificar o modelo e guardar no Firestore na coleção 'modelos_treinados'
+Este bot:
+- Carrega dados reais da coleção 'historico_previsoes'
+- Treina um modelo RandomForest com indicadores técnicos
+- Guarda o modelo localmente e codificado no Firestore
+- Regista métricas como MAE, MSE, R² e taxa de acerto real por moeda
 """
 
 import pandas as pd
@@ -29,12 +28,21 @@ def carregar_dados_treino():
     docs = db.collection("historico_previsoes").stream()
     dados = [doc.to_dict() for doc in docs if isinstance(doc.to_dict().get("resultado"), (int, float))]
     df = pd.DataFrame(dados)
-    campos = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position", "resultado"]
+    campos = ["RSI", "EMA_diff", "MACD_diff", "Volume_relativo", "BB_position", "resultado", "simbolo"]
     if not all(c in df.columns for c in campos):
         print("❌ Dados incompletos.")
         return None
     df.dropna(inplace=True)
     return df[campos]
+
+# 🎯 Avaliar acertos reais por moeda (previsao == resultado)
+def calcular_acertos(df):
+    if "previsao" not in df.columns:
+        return {}
+    df_filtrado = df[df["resultado"].isin([0, 1]) & df["previsao"].isin([0, 1])]
+    df_filtrado["acertou"] = df_filtrado["previsao"] == df_filtrado["resultado"]
+    por_moeda = df_filtrado.groupby("simbolo")["acertou"].mean().sort_values(ascending=False)
+    return por_moeda.to_dict()
 
 # 🧠 Treinar o modelo e guardar local + Firestore
 def treinar_modelo_e_guardar():
@@ -43,7 +51,7 @@ def treinar_modelo_e_guardar():
         print("❌ Nenhum dado válido para treino.")
         return None
 
-    X = df.drop("resultado", axis=1)
+    X = df.drop(["resultado", "simbolo"], axis=1)
     y = df["resultado"]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -63,16 +71,24 @@ def treinar_modelo_e_guardar():
     joblib.dump(modelo, buffer)
     modelo_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
+    acertos_por_moeda = calcular_acertos(df)
+
     db.collection("modelos_treinados").add({
         "data_treino": datetime.utcnow(),
         "mae": mae,
         "mse": mse,
         "r2": r2,
         "modelo": modelo_b64,
-        "n_amostras": len(df)
+        "n_amostras": len(df),
+        "acertos_por_moeda": acertos_por_moeda
     })
 
-    print(f"✅ Modelo treinado | MAE: {mae:.4f} | MSE: {mse:.4f} | R²: {r2:.4f} | Registos: {len(df)}")
+    print("📊 Treino concluído")
+    print(f"🔹 MAE: {mae:.4f} | MSE: {mse:.4f} | R²: {r2:.4f}")
+    print("🏅 Taxa de acerto por moeda:")
+    for moeda, taxa in acertos_por_moeda.items():
+        print(f" - {moeda}: {taxa:.2%}")
+
     return modelo
 
 if __name__ == "__main__":
