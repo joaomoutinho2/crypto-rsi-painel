@@ -60,7 +60,7 @@ def contagem_alertas_ultima_hora():
 
 # 🧠 Analisar e enviar até 5 melhores oportunidades
 def analisar_oportunidades(modelo):
-    exchange = ccxt.binance()
+    exchange = ccxt.kucoin()
     exchange.load_markets()
     symbols = [s for s in exchange.symbols if s.endswith("/USDT")]
 
