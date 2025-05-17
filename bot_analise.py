@@ -13,6 +13,7 @@ import os
 import joblib
 import ccxt
 import pandas as pd
+import time
 from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
