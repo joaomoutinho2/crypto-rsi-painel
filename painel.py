@@ -95,6 +95,8 @@ secao = st.sidebar.radio("📂 Secções", [
     "📜 Histórico de Vendas",
     "📊 Último Modelo Treinado",
     "📊 Desempenho do Bot",
+    "💸 Simulação de Capital Virtual",
+
 ])
 
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
@@ -512,3 +514,43 @@ elif secao == "📊 Desempenho do Bot":
             st.info("Ainda não há vendas registadas.")
     except Exception as e:
         st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
+
+# ============================
+# 💸 SIMULAÇÃO DE CAPITAL VIRTUAL
+# ============================
+elif secao == "💸 Simulação de Capital Virtual":
+    st.title("💸 Painel de Simulação de Capital Virtual")
+
+    try:
+        docs = db.collection("simulacoes_vendas").stream()
+        vendas = [doc.to_dict() for doc in docs]
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar simulações: {e}")
+        vendas = []
+
+    if vendas:
+        df = pd.DataFrame(vendas)
+        df["lucro_percentual"] = ((df["preco_venda"] - df["preco_entrada"]) / df["preco_entrada"]) * 100
+        df["data"] = pd.to_datetime(df["data_venda"])
+
+        saldo_inicial = 1000
+        lucro_total = df["lucro"].sum()
+        saldo_final = saldo_inicial + lucro_total
+
+        col1, col2 = st.columns(2)
+        col1.metric("Orçamento Inicial", f"{saldo_inicial:.2f} USDT")
+        col2.metric("Saldo Atual Simulado", f"{saldo_final:.2f} USDT")
+
+        st.markdown("---")
+        st.subheader("📊 Vendas Simuladas")
+        st.dataframe(df.sort_values("data", ascending=False).style.format({
+            "preco_entrada": "{:.2f}",
+            "preco_venda": "{:.2f}",
+            "lucro": "{:.2f}",
+            "lucro_percentual": "{:.2f}%"
+        }))
+
+        st.subheader("📈 Lucros por Venda")
+        st.line_chart(df.set_index("data")["lucro"])
+    else:
+        st.info("Ainda não foram registadas vendas simuladas.")

@@ -22,6 +22,12 @@ from ta.volatility import BollingerBands
 from firebase_config import iniciar_firebase
 from telegram_alert import enviar_telegram
 
+orcamento_inicial = 1000.0
+saldo_virtual = orcamento_inicial
+investimento_por_operacao = 0.05  # 5% do capital atual
+posicoes_virtuais = []
+lucros_virtuais = []
+
 # Inicializa Firebase
 db = iniciar_firebase()
 
@@ -58,6 +64,61 @@ def contagem_alertas_ultima_hora():
     uma_hora_atras = datetime.utcnow() - timedelta(hours=1)
     docs = db.collection("historico_previsoes").where("timestamp", ">=", uma_hora_atras).stream()
     return sum(1 for doc in docs if doc.to_dict().get("previsao") == 1)
+
+def verificar_saidas_virtuais(exchange):
+    global saldo_virtual
+    encerradas = []
+
+    for pos in posicoes_virtuais:
+        simbolo = pos["simbolo"]
+        try:
+            ticker = exchange.fetch_ticker(simbolo)
+            preco_atual = ticker["last"]
+            preco_entrada = pos["preco_entrada"]
+            objetivo = pos["objetivo"]
+
+            lucro_percentual = ((preco_atual - preco_entrada) / preco_entrada) * 100
+            stop_loss = -5.0  # nova regra de saída por perda
+
+            if lucro_percentual >= objetivo or lucro_percentual <= stop_loss:
+                valor_final = preco_atual * pos["quantidade"]
+                saldo_virtual += valor_final
+
+                motivo = "objetivo" if lucro_percentual >= objetivo else "stop-loss"
+                print(f"💰 VENDA ({motivo.upper()}): {simbolo} | Lucro: {lucro_percentual:.2f}%")
+
+                db.collection("simulacoes_vendas").add({
+                    "simbolo": simbolo,
+                    "preco_entrada": preco_entrada,
+                    "preco_venda": round(preco_atual, 4),
+                    "quantidade": round(pos["quantidade"], 6),
+                    "lucro": round(valor_final - pos["valor_investido"], 2),
+                    "data_venda": datetime.utcnow().isoformat(),
+                    "encerrado_por": motivo
+                })
+
+                encerradas.append(pos)
+
+        except Exception as e:
+            print(f"⚠️ Erro ao verificar venda virtual para {simbolo}: {e}")
+
+    for encerrada in encerradas:
+        preco_entrada = encerrada["preco_entrada"]
+        quantidade = encerrada["quantidade"]
+        preco_venda = exchange.fetch_ticker(encerrada["simbolo"])["last"]
+        valor_final = preco_venda * quantidade
+        lucro = valor_final - encerrada["valor_investido"]
+
+        db.collection("simulacoes_vendas").add({
+            "simbolo": encerrada["simbolo"],
+            "preco_entrada": preco_entrada,
+            "preco_venda": round(preco_venda, 4),
+            "quantidade": round(quantidade, 6),
+            "lucro": round(lucro, 2),
+            "data_venda": datetime.utcnow().isoformat()
+        })
+
+        posicoes_virtuais.remove(encerrada)
 
 # 🧠 Analisar e enviar até 5 melhores oportunidades
 def analisar_oportunidades(modelo):
@@ -116,7 +177,18 @@ def analisar_oportunidades(modelo):
         return
 
     for simbolo, entrada, _, row, objetivo in oportunidades[:restantes]:
+        global saldo_virtual
         preco = row["close"]
+
+        # Simular investimento
+        valor_investido = round(saldo_virtual * investimento_por_operacao, 2)
+        if valor_investido < 10:
+            print(f"⛔ Saldo virtual muito baixo para investir em {simbolo}.")
+            continue
+
+        quantidade = valor_investido / preco
+        saldo_virtual -= valor_investido
+
         mensagem = (
             f"🚨 Oportunidade: {simbolo}\n"
             f"💰 Preço: {preco:.2f} USDT\n"
@@ -125,6 +197,7 @@ def analisar_oportunidades(modelo):
             f"📉 Volume: {row['volume']:.2f} (média: {row['volume_medio']:.2f})\n"
             f"🎯 Bollinger: [{row['BB_lower']:.2f} ~ {row['BB_upper']:.2f}]\n"
             f"📌 Objetivo sugerido: {objetivo:.2f}%\n"
+            f"💼 Simulado: Investir {valor_investido:.2f} → {quantidade:.6f} unidades\n"
             f"⚙️ Entrada considerada promissora ✅"
         )
         enviar_telegram(mensagem)
@@ -139,14 +212,26 @@ def analisar_oportunidades(modelo):
         })
         db.collection("historico_previsoes").add(doc)
 
+        # Guardar posição simulada
+        posicoes_virtuais.append({
+            "simbolo": simbolo,
+            "quantidade": quantidade,
+            "valor_investido": valor_investido,
+            "preco_entrada": preco,
+            "objetivo": objetivo,
+            "data": datetime.utcnow()
+        })
+
     print(f"✅ Enviados {min(restantes, len(oportunidades))} alertas nesta execução.")
+    print(f"📊 Capital restante (simulado): {saldo_virtual:.2f} USDT | Operações simuladas: {len(posicoes_virtuais)}")
 
 # 🎯 Função para calcular objetivo automaticamente com base na volatilidade
 
-def calcular_objetivo_volatilidade(df, fator=2.5):
+def calcular_objetivo_volatilidade(df, fator=3.0, objetivo_minimo=2.5):
     volatilidades = (df['high'] - df['low']) / df['low'] * 100
     media_volatilidade = volatilidades.rolling(window=14).mean().iloc[-1]
-    return round(media_volatilidade * fator, 2)  # objetivo em %
+    objetivo = round(media_volatilidade * fator, 2)
+    return max(objetivo, objetivo_minimo)
 
 # 🚀 Execução principal
 def main():
@@ -158,6 +243,8 @@ def main():
 
     atualizar_resultados_firestore(modelo)
     analisar_oportunidades(modelo)
+    verificar_saidas_virtuais(ccxt.kucoin())
+    print(f"💼 Saldo após verificações: {saldo_virtual:.2f} USDT")
 
 if __name__ == "__main__":
     main()
