@@ -531,6 +531,8 @@ elif secao == "💸 Simulação de Capital Virtual":
         df = pd.DataFrame(vendas)
         df["lucro_percentual"] = ((df["preco_venda"] - df["preco_entrada"]) / df["preco_entrada"]) * 100
         df["data"] = pd.to_datetime(df["data_venda"])
+        df = df.sort_values("data")
+        df["saldo_simulado"] = 1000 + df["lucro"].cumsum()
 
         saldo_inicial = 1000
         lucro_total = df["lucro"].sum()
@@ -551,5 +553,16 @@ elif secao == "💸 Simulação de Capital Virtual":
 
         st.subheader("📈 Lucros por Venda")
         st.line_chart(df.set_index("data")["lucro"])
+
+        st.subheader("📈 Evolução do Saldo Simulado")
+        st.line_chart(df.set_index("data")["saldo_simulado"])
+
+        if "encerrado_por" in df.columns:
+            st.subheader("📌 Motivo de Encerramento")
+            st.bar_chart(df["encerrado_por"].value_counts())
+
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Exportar CSV", csv, "simulacoes_vendas.csv", "text/csv")
     else:
         st.info("Ainda não foram registadas vendas simuladas.")
+

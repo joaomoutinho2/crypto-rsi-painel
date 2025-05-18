@@ -1,13 +1,13 @@
-import openai
 import os
 import pandas as pd
 from time import sleep
 from random import uniform, seed
 from datetime import datetime
 from firebase_config import iniciar_firebase
+from openai import OpenAI
 
 # 🔐 API Key
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # 🔁 Função para gerar linha de entrada
 
@@ -33,7 +33,7 @@ def avaliar_linha_chatgpt(linha):
         "Isto é uma boa entrada (1) ou não (0)? Só responde com 1 ou 0."
     )
     try:
-        resposta = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "És um analista técnico de criptomoedas."},
@@ -42,7 +42,8 @@ def avaliar_linha_chatgpt(linha):
             temperature=0.2,
             max_tokens=3
         )
-        saida = resposta.choices[0].message.content.strip()
+
+        saida = response.choices[0].message.content.strip()
         return int(saida) if saida in ["0", "1"] else None
     except Exception as e:
         print(f"❌ Erro ao consultar GPT: {e}")
