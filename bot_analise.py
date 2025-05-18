@@ -14,6 +14,8 @@ import joblib
 import ccxt
 import pandas as pd
 import time
+import base64
+import io
 from chatgpt_analise import avaliar_com_chatgpt
 from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
@@ -176,6 +178,22 @@ def verificar_saidas_virtuais(exchange):
 
         posicoes_virtuais.remove(encerrada)
 
+def carregar_modelo_firestore():
+    try:
+        docs = db.collection("modelos_treinados").order_by("data_treino", direction=firestore.Query.DESCENDING).limit(1).stream()
+        for doc in docs:
+            dados = doc.to_dict()
+            if "modelo" in dados:
+                binario = base64.b64decode(dados["modelo"])
+                modelo = joblib.load(io.BytesIO(binario))
+                print("✅ Modelo carregado do Firestore.")
+                return modelo
+        print("⚠️ Nenhum modelo encontrado no Firestore.")
+        return None
+    except Exception as e:
+        print(f"❌ Erro ao carregar modelo do Firestore: {e}")
+        return None
+
 # 🧠 Analisar e enviar até 5 melhores oportunidades
 def analisar_oportunidades(modelo):
     exchange = ccxt.kucoin()
@@ -294,7 +312,11 @@ def calcular_objetivo_volatilidade(df, fator=3.0, objetivo_minimo=2.5):
 # 🚀 Execução principal
 def main():
     try:
-        modelo = joblib.load("modelo_treinado.pkl")
+        modelo = carregar_modelo_firestore()
+        if modelo is None:
+            print("❌ Sem modelo disponível. Abortando execução.")
+            return
+
     except Exception as e:
         print(f"❌ Erro ao carregar modelo: {e}")
         return
