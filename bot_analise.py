@@ -23,6 +23,7 @@ from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
 
 from firebase_config import iniciar_firebase
+from firebase_admin import firestore
 from telegram_alert import enviar_telegram
 
 orcamento_inicial = 1000.0
