@@ -95,7 +95,7 @@ secao = st.sidebar.radio("📂 Secções", [
     "📜 Histórico de Vendas",
     "📊 Último Modelo Treinado",
     "📊 Desempenho do Bot",
-    "💸 Simulação de Capital Virtual"
+    "Simulação de Capital"
 ])
 
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
@@ -517,9 +517,9 @@ elif secao == "📊 Desempenho do Bot":
 # ============================
 # 💸 SIMULAÇÃO DE CAPITAL VIRTUAL
 # ============================
-elif secao == "💸 Simulação de Capital Virtual":
+elif secao == "Simulação de Capital":
     st.title("💸 Painel de Simulação de Capital Virtual")
-
+    
     try:
         docs = db.collection("simulacoes_vendas").stream()
         vendas = [doc.to_dict() for doc in docs]
