@@ -20,7 +20,6 @@ from streamlit_autorefresh import st_autorefresh
 from config import MOEDAS, LOG_PATH
 from firebase_config import iniciar_firebase
 from firebase_admin import firestore
-from telegram_alert import enviar_telegram
 
 # ✅ Inicializar Firestore com secrets do Streamlit
 db = iniciar_firebase(usando_secrets=True, secrets=st.secrets)
@@ -59,20 +58,6 @@ def carregar_historico_vendas():
     except Exception as e:
         st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
         return []
-
-def carregar_modelo_treinado():
-    try:
-        docs = db.collection("modelos_treinados").order_by("data_treino", direction=firestore.Query.DESCENDING).limit(5).stream()
-        for doc in docs:
-            dados = doc.to_dict()
-            if "resultado" not in dados:
-                st.warning(f"⚠️ Documento ignorado: {doc.id} - Faltam campos: ['resultado']")
-                continue
-            return doc
-        return None
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar dados do modelo treinado: {e}")
-        return None
 
 # ============================
 # ⚙️ Configuração Geral
