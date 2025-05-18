@@ -34,7 +34,7 @@ def avaliar_linha_chatgpt(linha):
     )
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "És um analista técnico de criptomoedas."},
                 {"role": "user", "content": prompt}

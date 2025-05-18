@@ -60,6 +60,60 @@ def guardar_previsao(simbolo, entrada, previsao):
     }
     db.collection("historico_previsoes").add(dados)
 
+def carregar_posicoes_virtuais():
+    try:
+        docs = db.collection("posicoes_virtuais").stream()
+        return [(doc.id, doc.to_dict()) for doc in docs]
+    except Exception as e:
+        print(f"❌ Erro ao carregar posicoes_virtuais: {e}")
+        return []
+
+def guardar_posicao_virtual(pos):
+    try:
+        db.collection("posicoes_virtuais").add(pos)
+    except Exception as e:
+        print(f"❌ Erro ao guardar posicao_virtual: {e}")
+
+# 🧾 Atualizar verificar_saidas_virtuais para usar Firestore
+
+def verificar_saidas_virtuais(exchange):
+    global saldo_virtual
+    encerradas = []
+
+    for doc_id, pos in carregar_posicoes_virtuais():
+        simbolo = pos["simbolo"]
+        try:
+            ticker = exchange.fetch_ticker(simbolo)
+            preco_atual = ticker["last"]
+            preco_entrada = pos["preco_entrada"]
+            objetivo = pos["objetivo"]
+            quantidade = pos["quantidade"]
+
+            lucro_percentual = ((preco_atual - preco_entrada) / preco_entrada) * 100
+            stop_loss = -5.0
+
+            if lucro_percentual >= objetivo or lucro_percentual <= stop_loss:
+                valor_final = preco_atual * quantidade
+                saldo_virtual += valor_final
+
+                motivo = "objetivo" if lucro_percentual >= objetivo else "stop-loss"
+                print(f"💰 VENDA ({motivo.upper()}): {simbolo} | Lucro: {lucro_percentual:.2f}%")
+
+                db.collection("simulacoes_vendas").add({
+                    "simbolo": simbolo,
+                    "preco_entrada": preco_entrada,
+                    "preco_venda": round(preco_atual, 4),
+                    "quantidade": round(quantidade, 6),
+                    "lucro": round(valor_final - pos["valor_investido"], 2),
+                    "data_venda": datetime.utcnow().isoformat(),
+                    "encerrado_por": motivo
+                })
+
+                db.collection("posicoes_virtuais").document(doc_id).delete()
+
+        except Exception as e:
+            print(f"⚠️ Erro ao verificar venda virtual para {simbolo}: {e}")
+
 # 🔎 Verificar quantos alertas já foram enviados na última hora
 def contagem_alertas_ultima_hora():
     uma_hora_atras = datetime.utcnow() - timedelta(hours=1)
@@ -70,19 +124,20 @@ def verificar_saidas_virtuais(exchange):
     global saldo_virtual
     encerradas = []
 
-    for pos in posicoes_virtuais:
+    for doc_id, pos in carregar_posicoes_virtuais():
         simbolo = pos["simbolo"]
         try:
             ticker = exchange.fetch_ticker(simbolo)
             preco_atual = ticker["last"]
             preco_entrada = pos["preco_entrada"]
             objetivo = pos["objetivo"]
+            quantidade = pos["quantidade"]
 
             lucro_percentual = ((preco_atual - preco_entrada) / preco_entrada) * 100
-            stop_loss = -5.0  # nova regra de saída por perda
+            stop_loss = -5.0
 
             if lucro_percentual >= objetivo or lucro_percentual <= stop_loss:
-                valor_final = preco_atual * pos["quantidade"]
+                valor_final = preco_atual * quantidade
                 saldo_virtual += valor_final
 
                 motivo = "objetivo" if lucro_percentual >= objetivo else "stop-loss"
@@ -92,13 +147,13 @@ def verificar_saidas_virtuais(exchange):
                     "simbolo": simbolo,
                     "preco_entrada": preco_entrada,
                     "preco_venda": round(preco_atual, 4),
-                    "quantidade": round(pos["quantidade"], 6),
+                    "quantidade": round(quantidade, 6),
                     "lucro": round(valor_final - pos["valor_investido"], 2),
                     "data_venda": datetime.utcnow().isoformat(),
                     "encerrado_por": motivo
                 })
 
-                encerradas.append(pos)
+                db.collection("posicoes_virtuais").document(doc_id).delete()
 
         except Exception as e:
             print(f"⚠️ Erro ao verificar venda virtual para {simbolo}: {e}")
@@ -110,13 +165,13 @@ def verificar_saidas_virtuais(exchange):
         valor_final = preco_venda * quantidade
         lucro = valor_final - encerrada["valor_investido"]
 
-        db.collection("simulacoes_vendas").add({
-            "simbolo": encerrada["simbolo"],
-            "preco_entrada": preco_entrada,
-            "preco_venda": round(preco_venda, 4),
-            "quantidade": round(quantidade, 6),
-            "lucro": round(lucro, 2),
-            "data_venda": datetime.utcnow().isoformat()
+        guardar_posicao_virtual({
+            "simbolo": simbolo,
+            "quantidade": quantidade,
+            "valor_investido": valor_investido,
+            "preco_entrada": preco,
+            "objetivo": objetivo,
+            "data": datetime.utcnow()
         })
 
         posicoes_virtuais.remove(encerrada)

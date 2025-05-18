@@ -93,39 +93,11 @@ secao = st.sidebar.radio("📂 Secções", [
     "💼 Minhas Posições",
     "📈 Estratégias",
     "📜 Histórico de Vendas",
-    "📊 Último Modelo Treinado",
     "📊 Desempenho do Bot",
     "💸 Simulação de Capital Virtual"
 ])
 
 st_autorefresh(interval=tempo_refresco * 1000, key="refresh")
-
-# ============================
-# 📊 ÚLTIMO MODELO TREINADO
-# ============================
-if secao == "📊 Último Modelo Treinado":
-    st.title("📊 Último Modelo Treinado com Dados Reais")
-    doc = carregar_modelo_treinado()
-    if doc:
-        modelo = doc.to_dict()
-        st.markdown(f"**🧠 Modelo:** {modelo['modelo']}") 
-        st.markdown(f"**📅 Data de treino:** {modelo['data_treino']}")
-        st.markdown(f"**🎯 Acurácia:** {modelo['acuracia']:.2%}")
-
-        st.markdown("---")
-        st.subheader("📊 Relatório de Classificação")
-        relatorio = modelo.get("relatorio", {})
-        st.dataframe(pd.DataFrame(relatorio).T)
-
-        st.subheader("🧱 Matriz de Confusão")
-        matriz = pd.DataFrame(
-            modelo.get("matriz_confusao", []),
-            columns=["Previsto Negativo", "Previsto Positivo"],
-            index=["Real Negativo", "Real Positivo"]
-        )
-        st.dataframe(matriz)
-    else:
-        st.warning("Nenhum modelo treinado disponível no momento.")
 
 # ============================
 # 📊 PAINEL RSI
@@ -498,21 +470,38 @@ elif secao == "📊 Desempenho do Bot":
     except Exception as e:
         st.error(f"❌ Erro ao carregar desempenho: {e}")
 
-    # 💰 Lucro por moeda
-    st.subheader("💰 Lucro Acumulado por Moeda")
+    # 📈 Lucro por Moeda
     try:
-        vendas = db.collection("historico_vendas").stream()
-        vendas_dados = [doc.to_dict() for doc in vendas if "moeda" in doc.to_dict() and "lucro" in doc.to_dict()]
+        vendas = db.collection("simulacoes_vendas").stream()
+        vendas_dados = [doc.to_dict() for doc in vendas if "simbolo" in doc.to_dict() and "lucro" in doc.to_dict()]
+
         if vendas_dados:
-            df_vendas = pd.DataFrame(vendas_dados)
-            df_vendas["lucro"] = pd.to_numeric(df_vendas["lucro"], errors="coerce")
-            lucro_moeda = df_vendas.groupby("moeda")["lucro"].sum().sort_values(ascending=False)
+            df = pd.DataFrame(vendas_dados)
+            df["lucro"] = pd.to_numeric(df["lucro"], errors="coerce")
+            df["data"] = pd.to_datetime(df["data_venda"])
+
+            st.subheader("💰 Lucro Acumulado por Moeda")
+            lucro_moeda = df.groupby("simbolo")["lucro"].sum().sort_values(ascending=False)
             st.bar_chart(lucro_moeda)
-            st.dataframe(lucro_moeda.rename("Lucro Total (USDT)").map(lambda x: f"{x:.2f}"), use_container_width=True)
+            st.dataframe(lucro_moeda.rename("Lucro Total (USDT)").map(lambda x: f"{x:.2f}"))
+
+            st.subheader("📊 Total de Operações por Moeda")
+            operacoes = df["simbolo"].value_counts()
+            st.dataframe(operacoes.rename("N.º Operações"))
+
+            st.subheader("📈 Lucro Médio por Operação (por Moeda)")
+            lucro_medio = df.groupby("simbolo")["lucro"].mean().sort_values(ascending=False)
+            st.dataframe(lucro_medio.rename("Lucro Médio").map(lambda x: f"{x:.2f}"))
+
+            if "encerrado_por" in df.columns:
+                st.subheader("🎯 Tipo de Encerramento por Moeda")
+                encerramento = df.groupby(["simbolo", "encerrado_por"]).size().unstack(fill_value=0)
+                st.dataframe(encerramento)
         else:
-            st.info("Ainda não há vendas registadas.")
+            st.info("Ainda não há vendas simuladas registadas.")
+
     except Exception as e:
-        st.error(f"❌ Erro ao carregar histórico de vendas: {e}")
+        st.error(f"❌ Erro ao carregar estatísticas de desempenho: {e}")
 
 # ============================
 # 💸 SIMULAÇÃO DE CAPITAL VIRTUAL
