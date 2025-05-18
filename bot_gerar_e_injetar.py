@@ -5,6 +5,8 @@ from random import uniform, seed
 from datetime import datetime
 from firebase_config import iniciar_firebase
 from openai import OpenAI
+from uuid import uuid4
+
 
 # 🔐 API Key
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -56,7 +58,7 @@ db = iniciar_firebase()
 seed(42)
 injetados = 0
 
-for i in range(100):
+for i in range(10):
     entrada = gerar_linha()
     resultado = avaliar_linha_chatgpt(entrada)
     if resultado is not None:
@@ -64,13 +66,14 @@ for i in range(100):
             **entrada,
             "resultado": resultado,
             "simbolo": "GPT_SIMULADO",
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow(),
+            "uid": str(uuid4())
         }
-        db.collection("historico_previsoes").add(doc)
+        doc_id = str(uuid4())  # ID único garantido
+        db.collection("historico_previsoes").document(doc_id).set(doc)
         injetados += 1
         print(f"{i+1:03d} ✔️ RSI={entrada['RSI']} → resultado: {resultado}")
     else:
         print(f"{i+1:03d} ❌ Erro ao avaliar entrada")
-    sleep(1.2)  # evitar rate limit
 
 print(f"✅ {injetados} entradas geradas e enviadas para o Firestore.")

@@ -63,32 +63,35 @@ def treinar_modelo_e_guardar():
     mae = mean_absolute_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
 
-    # 🔁 Juntar previsões ao DataFrame de teste para avaliação
+    # Guardar localmente
+    joblib.dump(modelo, "modelo_treinado.pkl")
+
+    # 🔁 Adicionar previsões ao DataFrame de teste
     df_test = X_test.copy()
     df_test["previsao"] = y_pred
     df_test["resultado"] = y_test
     df_test["simbolo"] = df.loc[X_test.index, "simbolo"]
 
+    acertos_por_moeda = calcular_acertos(df_test)
 
-    # Guardar localmente
-    joblib.dump(modelo, "modelo_treinado.pkl")
-
-    # Codificar e guardar no Firestore
+    # 🔐 Codificar modelo e guardar no Firestore
     buffer = BytesIO()
     joblib.dump(modelo, buffer)
     modelo_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-    acertos_por_moeda = calcular_acertos(df_test)
-
-    db.collection("modelos_treinados").add({
-        "data_treino": datetime.utcnow(),
-        "mae": mae,
-        "mse": mse,
-        "r2": r2,
-        "modelo": modelo_b64,
-        "n_amostras": len(df),
-        "acertos_por_moeda": acertos_por_moeda
-    })
+    try:
+        db.collection("modelos_treinados").add({
+            "data_treino": datetime.utcnow(),
+            "mae": mae,
+            "mse": mse,
+            "r2": r2,
+            "modelo": modelo_b64,
+            "n_amostras": len(df),
+            "acertos_por_moeda": acertos_por_moeda
+        })
+        print("✅ Modelo guardado no Firestore com sucesso.")
+    except Exception as e:
+        print(f"❌ Erro ao guardar modelo no Firestore: {e}")
 
     print("📊 Treino concluído")
     print(f"🔹 MAE: {mae:.4f} | MSE: {mse:.4f} | R²: {r2:.4f}")
