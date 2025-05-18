@@ -14,6 +14,7 @@ import joblib
 import ccxt
 import pandas as pd
 import time
+from chatgpt_analise import avaliar_com_chatgpt
 from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD
@@ -166,6 +167,7 @@ def analisar_oportunidades(modelo):
                 objetivo = calcular_objetivo_volatilidade(df)
                 força = abs(row["RSI"] - 50) + abs(row["MACD_diff"]) + abs(row["BB_position"] - 0.5)
                 oportunidades.append((simbolo, entrada, força, row, objetivo))
+                comentario = avaliar_com_chatgpt(simbolo, row["RSI"], row["MACD_diff"], row["volume"], objetivo)
 
         except Exception as e:
             print(f"⚠️ Erro ao analisar {simbolo}: {e}")
@@ -198,6 +200,7 @@ def analisar_oportunidades(modelo):
             f"🎯 Bollinger: [{row['BB_lower']:.2f} ~ {row['BB_upper']:.2f}]\n"
             f"📌 Objetivo sugerido: {objetivo:.2f}%\n"
             f"💼 Simulado: Investir {valor_investido:.2f} → {quantidade:.6f} unidades\n"
+            f"\n🧠 GPT diz: {comentario}"
             f"⚙️ Entrada considerada promissora ✅"
         )
         enviar_telegram(mensagem)
