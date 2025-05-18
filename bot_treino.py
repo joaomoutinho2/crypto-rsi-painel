@@ -63,6 +63,13 @@ def treinar_modelo_e_guardar():
     mae = mean_absolute_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
 
+    # 🔁 Juntar previsões ao DataFrame de teste para avaliação
+    df_test = X_test.copy()
+    df_test["previsao"] = y_pred
+    df_test["resultado"] = y_test
+    df_test["simbolo"] = df.loc[X_test.index, "simbolo"]
+
+
     # Guardar localmente
     joblib.dump(modelo, "modelo_treinado.pkl")
 
@@ -71,7 +78,7 @@ def treinar_modelo_e_guardar():
     joblib.dump(modelo, buffer)
     modelo_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-    acertos_por_moeda = calcular_acertos(df)
+    acertos_por_moeda = calcular_acertos(df_test)
 
     db.collection("modelos_treinados").add({
         "data_treino": datetime.utcnow(),
