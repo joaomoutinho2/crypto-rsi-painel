@@ -63,19 +63,21 @@ def guardar_previsao(simbolo, entrada, previsao):
     }
     db.collection("historico_previsoes").add(dados)
 
-def carregar_posicoes_virtuais():
+def carregar_saldo_virtual():
     try:
-        docs = db.collection("posicoes_virtuais").stream()
-        return [(doc.id, doc.to_dict()) for doc in docs]
+        doc = db.collection("estado_simulacao").document("saldo_virtual").get()
+        if doc.exists:
+            return doc.to_dict().get("valor", 1000.0)
     except Exception as e:
-        print(f"❌ Erro ao carregar posicoes_virtuais: {e}")
-        return []
+        print(f"⚠️ Erro ao carregar saldo_virtual: {e}")
+    return 1000.0
 
-def guardar_posicao_virtual(pos):
+def guardar_saldo_virtual(valor):
     try:
-        db.collection("posicoes_virtuais").add(pos)
+        db.collection("estado_simulacao").document("saldo_virtual").set({"valor": round(valor, 2)})
     except Exception as e:
-        print(f"❌ Erro ao guardar posicao_virtual: {e}")
+        print(f"❌ Erro ao guardar saldo_virtual: {e}")
+
 
 # 🧾 Atualizar verificar_saidas_virtuais para usar Firestore
 
@@ -157,27 +159,15 @@ def verificar_saidas_virtuais(exchange):
                 })
 
                 db.collection("posicoes_virtuais").document(doc_id).delete()
+                encerradas.append(simbolo)
 
         except Exception as e:
             print(f"⚠️ Erro ao verificar venda virtual para {simbolo}: {e}")
 
-    for encerrada in encerradas:
-        preco_entrada = encerrada["preco_entrada"]
-        quantidade = encerrada["quantidade"]
-        preco_venda = exchange.fetch_ticker(encerrada["simbolo"])["last"]
-        valor_final = preco_venda * quantidade
-        lucro = valor_final - encerrada["valor_investido"]
+    if encerradas:
+        guardar_saldo_virtual(saldo_virtual)
+        print(f"💾 Saldo atualizado após vendas: {saldo_virtual:.2f} USDT")
 
-        guardar_posicao_virtual({
-            "simbolo": simbolo,
-            "quantidade": quantidade,
-            "valor_investido": valor_investido,
-            "preco_entrada": preco,
-            "objetivo": objetivo,
-            "data": datetime.utcnow()
-        })
-
-        posicoes_virtuais.remove(encerrada)
 
 def carregar_modelo_firestore():
     try:
@@ -264,6 +254,7 @@ def analisar_oportunidades(modelo):
 
         quantidade = valor_investido / preco
         saldo_virtual -= valor_investido
+        guardar_saldo_virtual(saldo_virtual)
 
         mensagem = (
             f"🚨 Oportunidade: {simbolo}\n"
@@ -312,6 +303,10 @@ def calcular_objetivo_volatilidade(df, fator=3.0, objetivo_minimo=2.5):
 
 # 🚀 Execução principal
 def main():
+    global saldo_virtual
+    saldo_virtual = carregar_saldo_virtual()
+    print(f"💰 Saldo inicial carregado: {saldo_virtual:.2f} USDT")
+
     try:
         modelo = carregar_modelo_firestore()
         if modelo is None:
@@ -325,7 +320,10 @@ def main():
     atualizar_resultados_firestore(modelo)
     analisar_oportunidades(modelo)
     verificar_saidas_virtuais(ccxt.kucoin())
+    
+    guardar_saldo_virtual(saldo_virtual)  # ✅ guardar no final também
     print(f"💼 Saldo após verificações: {saldo_virtual:.2f} USDT")
+
 
 if __name__ == "__main__":
     main()
