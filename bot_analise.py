@@ -63,14 +63,13 @@ def guardar_previsao(simbolo, entrada, previsao):
     }
     db.collection("historico_previsoes").add(dados)
 
-def carregar_saldo_virtual():
+def carregar_posicoes_virtuais():
     try:
-        doc = db.collection("estado_simulacao").document("saldo_virtual").get()
-        if doc.exists:
-            return doc.to_dict().get("valor", 1000.0)
+        docs = db.collection("posicoes_virtuais").stream()
+        return [(doc.id, doc.to_dict()) for doc in docs]
     except Exception as e:
-        print(f"⚠️ Erro ao carregar saldo_virtual: {e}")
-    return 1000.0
+        print(f"❌ Erro ao carregar posicoes_virtuais: {e}")
+        return []
 
 def guardar_saldo_virtual(valor):
     try:
