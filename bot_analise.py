@@ -88,13 +88,6 @@ def carregar_posicoes_virtuais():
         print(f"❌ Erro ao carregar posicoes_virtuais: {e}")
         return []
 
-def guardar_saldo_virtual(valor):
-    try:
-        db.collection("estado_simulacao").document("saldo_virtual").set({"valor": round(valor, 2)})
-    except Exception as e:
-        print(f"❌ Erro ao guardar saldo_virtual: {e}")
-
-
 # 🧾 Atualizar verificar_saidas_virtuais para usar Firestore
 
 def verificar_saidas_virtuais(exchange):
