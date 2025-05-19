@@ -35,6 +35,23 @@ lucros_virtuais = []
 # Inicializa Firebase
 db = iniciar_firebase()
 
+def carregar_saldo_virtual():
+    try:
+        doc = db.collection("estado_simulacao").document("saldo_virtual").get()
+        if doc.exists:
+            return doc.to_dict().get("valor", 1000.0)
+    except Exception as e:
+        print(f"⚠️ Erro ao carregar saldo_virtual: {e}")
+    return 1000.0
+
+def guardar_saldo_virtual(valor):
+    try:
+        db.collection("estado_simulacao").document("saldo_virtual").set({
+            "valor": round(valor, 2)
+        })
+    except Exception as e:
+        print(f"❌ Erro ao guardar saldo_virtual: {e}")
+
 # 🔁 Atualizar documentos pendentes com previsão
 def atualizar_resultados_firestore(modelo):
     docs = db.collection("historico_previsoes").where("resultado", "==", "pendente").stream()
